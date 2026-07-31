@@ -12,14 +12,16 @@ Generates a Stage chapter run for the current local git branch and opens it in a
 
 Run these checks before any other work. If either fails, stop with the error message — do not continue.
 
-1. **`stagereview` is installed.** Run `which stagereview`. If it exits non-zero, instruct the user:
+1. **`stagereview` is on the PATH.** Run `which stagereview`. If it exits non-zero, instruct the user:
 
    ```
-   stagereview is not installed. Run:
+   stagereview is not on your PATH. This fork isn't published to npm — link it
+   from your clone of https://github.com/drj613/stage-cli:
 
-       npm install -g stagereview
+       pnpm install && pnpm build
+       cd packages/cli && npm link
 
-   Then retry /stage-chapters.
+   Then retry /stage-chapters. See the repo README for full setup.
    ```
 
    Stop.
