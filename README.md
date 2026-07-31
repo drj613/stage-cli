@@ -1,48 +1,63 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/ReviewStage/stage-cli/main/assets/stage-mark.svg" alt="Stage" height="80">
-  <h1>Stage</h1>
+  <img src="https://raw.githubusercontent.com/drj613/stage-cli/main/assets/stage-mark.svg" alt="Stage" height="80">
+  <h1>Stage <sub><sup>(fork)</sup></sub></h1>
   <p>A code review tool that organizes local code changes into logical chapters and points out what to review before you dive into the code.</p>
-  <p>If you like this, try out the full Stage experience on our website below!</p>
 </div>
 
 <p align="center">
-  <a href="https://stagereview.app">Website</a>
-  &nbsp;&nbsp;•&nbsp;&nbsp;
-  <a href="https://stagereview.app/explore">Examples</a>
-  &nbsp;&nbsp;•&nbsp;&nbsp;
-  <a href="https://stagereview.app/blog">Blog</a>
-  &nbsp;&nbsp;•&nbsp;&nbsp;
-  <a href="https://x.com/StageReviewApp">Twitter</a>
-  &nbsp;&nbsp;•&nbsp;&nbsp;
-  <a href="https://discord.gg/kfEa6a4wTp">Discord</a>
-  &nbsp;&nbsp;•&nbsp;&nbsp;
-  <a href="https://stagereview.app/about">About Us</a>
+  <a href="https://github.com/drj613/stage-cli/blob/main/LICENSE"><img src="https://img.shields.io/github/license/drj613/stage-cli.svg" alt="license"></a>
 </p>
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/stagereview"><img src="https://img.shields.io/npm/v/stagereview.svg" alt="npm version"></a>
-  <a href="https://www.npmjs.com/package/stagereview"><img src="https://img.shields.io/npm/dm/stagereview.svg" alt="npm downloads"></a>
-  <a href="https://github.com/ReviewStage/stage-cli/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/stagereview.svg" alt="license"></a>
-</p>
+> **This is my personal fork of [ReviewStage/stage-cli](https://github.com/ReviewStage/stage-cli).**
+> I work on it here, so `main` may sit ahead of — or diverge from — upstream, and nothing here is published to npm.
+> For the maintained release, see the upstream repo, the [`stagereview`](https://www.npmjs.com/package/stagereview) package, or [stagereview.app](https://stagereview.app).
 
-## Install
+## Setup
 
-```bash
-npm install -g stagereview
-```
+This fork isn't on npm, so run it straight from your clone. Two halves need wiring up: the `stagereview` binary and the `stage-chapters` skill.
 
-Then add the skill to your agent:
+**1. Build the CLI.** The binary is bundled output, so it has to exist before you link it.
 
 ```bash
-npx skills add ReviewStage/stage-cli
+git clone https://github.com/drj613/stage-cli.git
+cd stage-cli
+pnpm install
+pnpm build
 ```
 
-## Uninstall
+**2. Put `stagereview` on your PATH.**
 
 ```bash
-npx skills remove ReviewStage/stage-cli
-npm uninstall -g stagereview
+cd packages/cli
+npm link
 ```
+
+Check it: `which stagereview && stagereview --version`.
+
+> `pnpm link --global` works too, but only after `pnpm setup` has created a global bin directory. `npm link` needs no setup.
+
+**3. Add the skill.** `npx skills add` only installs from GitHub, so link the skill directory yourself. Symlinking (rather than copying) means edits to `SKILL.md` take effect immediately.
+
+```bash
+# from the repo root
+ln -sfn "$PWD/skills/stage-chapters" ~/.claude/skills/stage-chapters   # Claude Code
+ln -sfn "$PWD/skills/stage-chapters" ~/.codex/skills/stage-chapters    # Codex
+```
+
+Swap `~/.claude` for a project's `.claude/skills/` to scope the skill to one repo instead of your whole user account.
+
+Restart your agent and `/stage-chapters` will use your local code.
+
+**After changing CLI source**, re-run `pnpm build` — the linked binary points at `packages/cli/dist`, which is only refreshed by a build. Changes to `skills/stage-chapters/SKILL.md` need no build, just a fresh agent session.
+
+### Unlinking
+
+```bash
+npm unlink -g stagereview
+rm ~/.claude/skills/stage-chapters ~/.codex/skills/stage-chapters
+```
+
+If you'd previously installed the upstream release, remove that too: `npx skills remove ReviewStage/stage-cli && npm uninstall -g stagereview`.
 
 ## Usage
 
@@ -100,8 +115,31 @@ dist/**
 
 Ignored files still appear in the "Other changes" chapter so nothing is silently hidden. Comments (`#`), blank lines, and negation patterns (`!`) are supported — last matching pattern wins.
 
-<img width="1840" height="1196" alt="Stage CLI" src="https://raw.githubusercontent.com/ReviewStage/stage-cli/main/assets/screenshot.png" />
+<img width="1840" height="1196" alt="Stage CLI" src="https://raw.githubusercontent.com/drj613/stage-cli/main/assets/screenshot.png" />
+
+## Development
+
+Common commands — see [AGENTS.md](AGENTS.md) for architecture and conventions.
+
+```bash
+pnpm dev:web      # web UI in Vite dev mode
+pnpm build        # build SPA, then bundle the CLI
+pnpm test         # Vitest
+pnpm typecheck    # tsc --noEmit across every package
+pnpm lint         # Biome (fails on warnings)
+pnpm db:generate  # new Drizzle migration from schema changes
+```
+
+Run `pnpm typecheck && pnpm lint && pnpm test` before pushing.
+
+### Staying in sync with upstream
+
+```bash
+git remote add upstream git@github.com:ReviewStage/stage-cli.git   # once
+git fetch upstream
+git rebase upstream/main
+```
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) — same as upstream.
