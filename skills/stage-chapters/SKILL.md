@@ -337,3 +337,13 @@ stagereview show "$AGENT_OUTPUT"
 `stagereview show` auto-detects the agent output format, independently computes the scope and "Other changes" chapter for filtered files, validates the JSON, inserts the run into the local SQLite database, boots a loopback HTTP server, and opens the browser.
 
 **The command blocks until the user presses Ctrl+C.** If your harness requires non-blocking execution, run it in the background (e.g., `run_in_background` in Claude Code). Invoke it as the final command in the workflow.
+
+### Headless mode (Stage dashboard)
+
+When invoked headlessly for the Stage dashboard (the prompt will say so), do not use `stagereview show`. Instead, replace the final command with:
+
+```bash
+stagereview import "$AGENT_OUTPUT" --pr <ref>
+```
+
+Use the same scope flags you passed to `stagereview prep` (`--pr`, `--base`, `--compare`, refs). `stagereview import` performs the same validation and database insertion as `show`, but exits immediately without starting a server or opening a browser, and prints the new run's `runId` to stdout. Print that runId as the last line of your output — the dashboard uses it to link to the run. All other steps are unchanged.
