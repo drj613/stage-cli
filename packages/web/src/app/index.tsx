@@ -1,23 +1,26 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { InboxList } from "@/components/dashboard/inbox-list";
+import { RunList } from "@/components/dashboard/run-list";
 import { Topbar } from "@/components/layout/topbar";
 
 export const Route = createFileRoute("/")({
-	component: NoRunSelected,
+	component: Dashboard,
 });
 
-function NoRunSelected() {
+function Dashboard() {
 	return (
 		<>
 			<Topbar />
-			<div className="flex flex-1 items-center justify-center p-6">
-				<div className="max-w-md text-center">
-					<h1 className="font-semibold text-lg">No run selected</h1>
-					<p className="mt-2 text-muted-foreground text-sm">
-						The URL is missing a <code>/runs/&lt;runId&gt;</code> path. Open the app via{" "}
-						<code>stagereview show &lt;path&gt;</code>.
-					</p>
-				</div>
-			</div>
+			<main className="mx-auto w-full max-w-4xl flex-1 space-y-10 p-6 lg:p-8">
+				<section className="space-y-3">
+					<h2 className="font-semibold text-sm">Waiting on your review</h2>
+					<InboxList />
+				</section>
+				<section className="space-y-3">
+					<h2 className="font-semibold text-sm">Recent runs</h2>
+					<RunList />
+				</section>
+			</main>
 		</>
 	);
 }
