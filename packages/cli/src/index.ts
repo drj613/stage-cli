@@ -2,6 +2,7 @@
 import { createRequire } from "node:module";
 import { Command, Option } from "commander";
 import { z } from "zod";
+import { runImport } from "./import.js";
 import { runPrep } from "./prep.js";
 import { WORKING_TREE_REF } from "./schema.js";
 import type { DiffScopeOptions } from "./scope.js";
@@ -74,6 +75,20 @@ program
 	.addOption(refOption)
 	.action(async (jsonPath: string, refs: string[], opts: DiffCommandOptions) => {
 		await show(jsonPath, toDiffScopeOptions(refs, opts));
+	});
+
+program
+	.command("import")
+	.description("Load a chapters.json file into the local database without opening a browser")
+	.argument("<path>", "Path to a chapters.json file")
+	.argument("[refs...]", "Git refs to diff, for example: main, main feature, or main..feature")
+	.option("--base <ref>", "Base ref to diff against (default: auto-detect main/master)")
+	.option("--compare <ref>", "Compare ref to diff against --base")
+	.option("--pr <ref>", "Review a GitHub pull request by number or URL")
+	.addOption(refOption)
+	.action(async (jsonPath: string, refs: string[], opts: DiffCommandOptions) => {
+		const runId = await runImport(jsonPath, toDiffScopeOptions(refs, opts));
+		process.stdout.write(`${runId}\n`);
 	});
 
 program.parseAsync(process.argv).catch((err) => {
