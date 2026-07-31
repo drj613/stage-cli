@@ -55,6 +55,31 @@ describe("JobManager", () => {
 	});
 });
 
+describe("JobManager.activeJobFor", () => {
+	it("finds a queued or running job for the same PR, ignoring URL case", async () => {
+		let release = () => {};
+		const blocked = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const manager = new JobManager(async () => {
+			await blocked;
+			return "run-1";
+		});
+		const id = manager.enqueue({
+			prUrl: "https://github.com/Acme/Widgets/pull/7",
+			repoRoot: "/a",
+			model: "sonnet",
+		});
+
+		expect(manager.activeJobFor("https://github.com/acme/widgets/pull/7")?.id).toBe(id);
+		expect(manager.activeJobFor("https://github.com/acme/widgets/pull/8")).toBeNull();
+
+		release();
+		await manager.settled();
+		expect(manager.activeJobFor("https://github.com/Acme/Widgets/pull/7")).toBeNull();
+	});
+});
+
 describe("parseRunnerOutput", () => {
 	it("takes the runId from the agent's last line", () => {
 		const runId = randomUUID();

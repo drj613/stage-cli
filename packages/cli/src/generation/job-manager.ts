@@ -1,14 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { type GenerationJob, isTerminalJobStatus, JOB_STATUS } from "@stagereview/types/generation";
 import { z } from "zod";
-
-export const JOB_STATUS = {
-	QUEUED: "queued",
-	RUNNING: "running",
-	SUCCEEDED: "succeeded",
-	FAILED: "failed",
-} as const;
-export type JobStatus = (typeof JOB_STATUS)[keyof typeof JOB_STATUS];
 
 export const GENERATION_MODEL = {
 	SONNET: "sonnet",
@@ -23,12 +16,7 @@ export interface JobRequest {
 	model: GenerationModel;
 }
 
-export interface Job extends JobRequest {
-	id: string;
-	status: JobStatus;
-	runId: string | null;
-	error: string | null;
-}
+export interface Job extends JobRequest, GenerationJob {}
 
 /** Returns the new runId on success. */
 export type JobRunner = (job: JobRequest) => Promise<string>;
@@ -64,6 +52,22 @@ export class JobManager {
 			void this.drain();
 		}
 		return job.id;
+	}
+
+	/**
+	 * The queued or running job for this PR, if any. Two tabs (or a remounted
+	 * row) must not each spawn an agent for the same PR, so callers reuse this
+	 * job instead of enqueuing a second one. URLs are compared case-insensitively
+	 * — GitHub treats owner/repo as case-insensitive.
+	 */
+	activeJobFor(prUrl: string): Job | null {
+		const wanted = prUrl.toLowerCase();
+		for (const job of this.jobs.values()) {
+			if (job.prUrl.toLowerCase() === wanted && !isTerminalJobStatus(job.status)) {
+				return { ...job };
+			}
+		}
+		return null;
 	}
 
 	/** A snapshot of the job — callers can't mutate the queue's state through it. */

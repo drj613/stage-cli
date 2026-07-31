@@ -1,3 +1,4 @@
+import type { GenerateAccepted, GenerationJob } from "@stagereview/types/generation";
 import { z } from "zod";
 import type { StageDb } from "../db/client.js";
 import { GENERATION_MODEL, type JobManager } from "../generation/job-manager.js";
@@ -38,8 +39,13 @@ export function generateRoutes(db: StageDb, jobs: JobManager): Route[] {
 					});
 					return;
 				}
-				const jobId = jobs.enqueue({ prUrl: body.prUrl, repoRoot, model: body.model });
-				writeJson(res, 202, { jobId });
+				// A second request for a PR that's already generating reuses the job
+				// in flight — one agent session per PR, no matter how many tabs ask.
+				const active = jobs.activeJobFor(body.prUrl);
+				const jobId = active
+					? active.id
+					: jobs.enqueue({ prUrl: body.prUrl, repoRoot, model: body.model });
+				writeJson(res, 202, { jobId } satisfies GenerateAccepted);
 			},
 		},
 		{
@@ -52,12 +58,8 @@ export function generateRoutes(db: StageDb, jobs: JobManager): Route[] {
 					writeJson(res, 404, { error: "Job not found" });
 					return;
 				}
-				writeJson(res, 200, {
-					id: job.id,
-					status: job.status,
-					runId: job.runId,
-					error: job.error,
-				});
+				const { id, status, runId, error } = job;
+				writeJson(res, 200, { id, status, runId, error } satisfies GenerationJob);
 			},
 		},
 	];

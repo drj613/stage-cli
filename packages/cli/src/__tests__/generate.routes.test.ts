@@ -54,6 +54,9 @@ describe("generate routes", () => {
 	let handle: ServerHandle | null = null;
 	let requested: JobRequest[] = [];
 	let jobs: JobManager;
+	/** Holds the runner mid-job so a second request lands while one is in flight. */
+	let blockRunner: () => void;
+	let releaseRunner: () => void;
 
 	beforeEach(async () => {
 		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage-generate-"));
@@ -71,8 +74,16 @@ describe("generate routes", () => {
 			}),
 		);
 		requested = [];
+		releaseRunner = () => {};
+		let blocked: Promise<void> = Promise.resolve();
+		blockRunner = () => {
+			blocked = new Promise((resolve) => {
+				releaseRunner = resolve;
+			});
+		};
 		jobs = new JobManager(async (job) => {
 			requested.push(job);
+			await blocked;
 			return "run-abc";
 		});
 		handle = await startServer({ webDistPath: webDist, routes: generateRoutes(db, jobs) });
@@ -146,6 +157,34 @@ describe("generate routes", () => {
 		});
 		expect(res.status).toBe(400);
 		expect(requested).toEqual([]);
+	});
+
+	it("reuses the in-flight job when the same PR is requested twice", async () => {
+		blockRunner();
+		const first = await request(port(), "POST", "/api/generate", {
+			prUrl: "https://github.com/acme/widgets/pull/7",
+		});
+		const second = await request(port(), "POST", "/api/generate", {
+			prUrl: "https://github.com/Acme/Widgets/pull/7",
+		});
+		expect(second.status).toBe(202);
+		expect(expectJobId(second.body)).toBe(expectJobId(first.body));
+		releaseRunner();
+		await jobs.settled();
+		expect(requested).toHaveLength(1);
+	});
+
+	it("starts a fresh job once the previous one for that PR finished", async () => {
+		const first = await request(port(), "POST", "/api/generate", {
+			prUrl: "https://github.com/acme/widgets/pull/7",
+		});
+		await jobs.settled();
+		const second = await request(port(), "POST", "/api/generate", {
+			prUrl: "https://github.com/acme/widgets/pull/7",
+		});
+		await jobs.settled();
+		expect(expectJobId(second.body)).not.toBe(expectJobId(first.body));
+		expect(requested).toHaveLength(2);
 	});
 
 	it("404s an unknown job", async () => {
