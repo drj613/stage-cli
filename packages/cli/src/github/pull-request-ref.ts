@@ -44,6 +44,15 @@ export function parsePullRequestUrl(url: string): PullRequestLocation | null {
 }
 
 /**
+ * The canonical github.com URL for a PR location. `parsePullRequestUrl` accepts
+ * decorated URLs (`/files`, `?diff=split`, `#discussion_r1`), so round-tripping
+ * through this gives one spelling per PR — which is what callers key on.
+ */
+export function toPullRequestUrl(location: PullRequestLocation): string {
+	return `https://github.com/${location.owner}/${location.repo}/pull/${location.number}`;
+}
+
+/**
  * Resolve a user-supplied PR reference (a bare number, `#123`, or a github.com
  * PR URL) to its number, validating that a URL points at the current repo —
  * the diff route reads file contents from the local clone, so a cross-repo PR

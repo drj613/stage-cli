@@ -159,19 +159,25 @@ describe("generate routes", () => {
 		expect(requested).toEqual([]);
 	});
 
-	it("reuses the in-flight job when the same PR is requested twice", async () => {
+	it("reuses the in-flight job for the same PR however the URL is spelled", async () => {
 		blockRunner();
 		const first = await request(port(), "POST", "/api/generate", {
 			prUrl: "https://github.com/acme/widgets/pull/7",
 		});
-		const second = await request(port(), "POST", "/api/generate", {
+		const mixedCase = await request(port(), "POST", "/api/generate", {
 			prUrl: "https://github.com/Acme/Widgets/pull/7",
 		});
-		expect(second.status).toBe(202);
-		expect(expectJobId(second.body)).toBe(expectJobId(first.body));
+		const decorated = await request(port(), "POST", "/api/generate", {
+			prUrl: "https://github.com/acme/widgets/pull/7/files?diff=split#discussion_r1",
+		});
+		expect(mixedCase.status).toBe(202);
+		expect(expectJobId(mixedCase.body)).toBe(expectJobId(first.body));
+		expect(expectJobId(decorated.body)).toBe(expectJobId(first.body));
 		releaseRunner();
 		await jobs.settled();
 		expect(requested).toHaveLength(1);
+		// The runner always sees the canonical URL, never the decorated one.
+		expect(requested[0]?.prUrl).toBe("https://github.com/acme/widgets/pull/7");
 	});
 
 	it("starts a fresh job once the previous one for that PR finished", async () => {

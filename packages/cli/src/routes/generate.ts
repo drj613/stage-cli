@@ -2,7 +2,7 @@ import type { GenerateAccepted, GenerationJob } from "@stagereview/types/generat
 import { z } from "zod";
 import type { StageDb } from "../db/client.js";
 import { GENERATION_MODEL, type JobManager } from "../generation/job-manager.js";
-import { parsePullRequestUrl, toNameWithOwner } from "../github/index.js";
+import { parsePullRequestUrl, toNameWithOwner, toPullRequestUrl } from "../github/index.js";
 import { RunIndex } from "../runs/run-index.js";
 import type { Route } from "../server.js";
 import { parseJsonBody, writeJson } from "./json.js";
@@ -39,12 +39,13 @@ export function generateRoutes(db: StageDb, jobs: JobManager): Route[] {
 					});
 					return;
 				}
-				// A second request for a PR that's already generating reuses the job
-				// in flight — one agent session per PR, no matter how many tabs ask.
-				const active = jobs.activeJobFor(body.prUrl);
-				const jobId = active
-					? active.id
-					: jobs.enqueue({ prUrl: body.prUrl, repoRoot, model: body.model });
+				// Jobs carry the canonical URL so `/pull/7`, `/pull/7/files`, and
+				// `/pull/7?diff=split` are one PR: a second request for a PR that's
+				// already generating reuses the job in flight, and one agent session
+				// runs no matter how many tabs ask.
+				const prUrl = toPullRequestUrl(location);
+				const active = jobs.activeJobFor(prUrl);
+				const jobId = active ? active.id : jobs.enqueue({ prUrl, repoRoot, model: body.model });
 				writeJson(res, 202, { jobId } satisfies GenerateAccepted);
 			},
 		},

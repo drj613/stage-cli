@@ -17,6 +17,7 @@ export {
 	parsePullRequestRef,
 	parsePullRequestUrl,
 	resolvePullRequestRefs,
+	toPullRequestUrl,
 } from "./pull-request-ref.js";
 export { type GitHubRepo, isGitHubRemote, parseGitHubRepo, toNameWithOwner } from "./repo.js";
 export { type GitHubViewer, getGitHubViewer } from "./viewer.js";
