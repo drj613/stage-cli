@@ -1,6 +1,7 @@
 import open from "open";
 import { closeDb, getDb } from "./db/client.js";
 import { coreRoutes } from "./routes/core.js";
+import { inboxRoutes } from "./routes/inbox.js";
 import { LOOPBACK_HOST, startServer, waitForShutdownSignal } from "./server.js";
 
 export interface StartOptions {
@@ -11,7 +12,7 @@ export async function start(options: StartOptions): Promise<void> {
 	const db = getDb();
 
 	const handle = await startServer({
-		routes: coreRoutes(db),
+		routes: [...coreRoutes(db), ...inboxRoutes(db)],
 	});
 	const { port } = handle;
 	const url = `http://${LOOPBACK_HOST}:${port}/`;

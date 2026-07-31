@@ -10,6 +10,7 @@
     "./comments": "./src/comments.ts",
     "./diff": "./src/diff.ts",
     "./github-threads": "./src/github-threads.ts",
+    "./inbox": "./src/inbox.ts",
     "./parsed-diff": "./src/parsed-diff.ts",
     "./prologue": "./src/prologue.ts",
     "./pull-request": "./src/pull-request.ts",
