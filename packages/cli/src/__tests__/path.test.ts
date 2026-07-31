@@ -1,29 +1,26 @@
-import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getDbPath } from "../db/path.js";
 import { NotInGitRepoError, readRepoRoot } from "../git.js";
 
-function expectedPath(repoRoot: string): string {
-	const hash = createHash("sha256").update(repoRoot.trim()).digest("hex").slice(0, 12);
-	return path.join(os.homedir(), ".stage", hash, "db.sqlite");
-}
-
 describe("getDbPath layout", () => {
-	it("hashes the same repo root to the same bucket regardless of trailing whitespace", () => {
-		expect(expectedPath("/a/repo")).toBe(expectedPath("/a/repo\n"));
-		expect(expectedPath("/a/repo")).toBe(expectedPath("  /a/repo  "));
+	it("places the database at ~/.stage/db.sqlite, independent of cwd or repo root", () => {
+		const p = getDbPath();
+		expect(p).toBe(path.join(os.homedir(), ".stage", "db.sqlite"));
 	});
 
-	it("hashes different repo roots to distinct buckets", () => {
-		expect(expectedPath("/a/repo")).not.toBe(expectedPath("/b/repo"));
-	});
-
-	it("places the database under ~/.stage/<hash>/db.sqlite", () => {
-		const p = expectedPath("/sample/repo");
-		expect(p.startsWith(path.join(os.homedir(), ".stage"))).toBe(true);
-		expect(path.basename(p)).toBe("db.sqlite");
+	it("returns the same path regardless of the current working directory", async () => {
+		const originalCwd = process.cwd();
+		const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage-cli-path-"));
+		try {
+			process.chdir(tmpDir);
+			expect(getDbPath()).toBe(path.join(os.homedir(), ".stage", "db.sqlite"));
+		} finally {
+			process.chdir(originalCwd);
+			await fs.rm(tmpDir, { recursive: true, force: true });
+		}
 	});
 });
 
