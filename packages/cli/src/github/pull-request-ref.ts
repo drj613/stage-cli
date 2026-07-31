@@ -29,6 +29,20 @@ const PrViewSchema = z.object({
 const PR_URL_RE = /(?:^|@|\/\/)github\.com[:/]([^/]+)\/(.+?)(?:\.git)?\/pull\/(\d+)/;
 const PR_NUMBER_RE = /^#?(\d+)$/;
 
+/** The repo and number a github.com PR URL points at. */
+export interface PullRequestLocation extends GitHubRepo {
+	number: number;
+}
+
+/** Parse `owner`, `repo`, and number out of a github.com PR URL, or null if it isn't one. */
+export function parsePullRequestUrl(url: string): PullRequestLocation | null {
+	const match = url.trim().match(PR_URL_RE);
+	if (!match) return null;
+	const [, owner, repo, num] = match;
+	if (!owner || !repo || !num) return null;
+	return { owner, repo, number: Number(num) };
+}
+
 /**
  * Resolve a user-supplied PR reference (a bare number, `#123`, or a github.com
  * PR URL) to its number, validating that a URL points at the current repo —
@@ -38,18 +52,17 @@ const PR_NUMBER_RE = /^#?(\d+)$/;
 export function parsePullRequestNumber(prRef: string, repo: GitHubRepo): number {
 	const trimmed = prRef.trim();
 
-	const urlMatch = trimmed.match(PR_URL_RE);
-	if (urlMatch) {
-		const [, owner, repoName, num] = urlMatch;
+	const location = parsePullRequestUrl(trimmed);
+	if (location) {
 		if (
-			owner?.toLowerCase() !== repo.owner.toLowerCase() ||
-			repoName?.toLowerCase() !== repo.repo.toLowerCase()
+			location.owner.toLowerCase() !== repo.owner.toLowerCase() ||
+			location.repo.toLowerCase() !== repo.repo.toLowerCase()
 		) {
 			throw new Error(
-				`PR ${owner}/${repoName}#${num} is in a different repository than the current one (${repo.owner}/${repo.repo}). Run the CLI inside that repository instead.`,
+				`PR ${location.owner}/${location.repo}#${location.number} is in a different repository than the current one (${repo.owner}/${repo.repo}). Run the CLI inside that repository instead.`,
 			);
 		}
-		return Number(num);
+		return location.number;
 	}
 
 	const numberMatch = trimmed.match(PR_NUMBER_RE);
