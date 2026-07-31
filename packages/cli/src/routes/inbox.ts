@@ -4,7 +4,7 @@ import type { StageDb } from "../db/client.js";
 import { chapterRun } from "../db/schema/index.js";
 import { ghErrorMessage } from "../github/exec.js";
 import { mapSearchResults, searchReviewRequested } from "../github/inbox.js";
-import { parseGitHubRepo } from "../github/repo.js";
+import { parseGitHubRepo, toNameWithOwner } from "../github/repo.js";
 import type { Route } from "../server.js";
 import { writeJson } from "./json.js";
 
@@ -30,7 +30,7 @@ function buildRunIdLookup(db: StageDb): (repo: string, prNumber: number) => stri
 		if (run.prNumber === null) continue;
 		const repo = parseGitHubRepo(run.originUrl);
 		if (!repo) continue;
-		const nameWithOwner = `${repo.owner}/${repo.repo}`;
+		const nameWithOwner = toNameWithOwner(repo);
 		let byPrNumber = byRepo.get(nameWithOwner);
 		if (!byPrNumber) {
 			byPrNumber = new Map();
@@ -39,7 +39,7 @@ function buildRunIdLookup(db: StageDb): (repo: string, prNumber: number) => stri
 		if (!byPrNumber.has(run.prNumber)) byPrNumber.set(run.prNumber, run.id);
 	}
 
-	return (repo, prNumber) => byRepo.get(repo)?.get(prNumber) ?? null;
+	return (repo, prNumber) => byRepo.get(repo.toLowerCase())?.get(prNumber) ?? null;
 }
 
 /** Cross-org PR inbox backed by `gh search prs`. */

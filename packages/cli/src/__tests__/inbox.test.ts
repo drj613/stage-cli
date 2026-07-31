@@ -29,6 +29,21 @@ describe("mapSearchResults", () => {
 		]);
 	});
 
+	it("maps a deleted-account author (null) to a null author on the wire", () => {
+		const item = {
+			number: 9,
+			title: "Fix flaky test",
+			url: "https://github.com/acme/widgets/pull/9",
+			repository: { nameWithOwner: "acme/widgets" },
+			author: null,
+			isDraft: true,
+			updatedAt: "2026-07-30T12:00:00Z",
+		};
+
+		const [pr] = mapSearchResults([item], () => null);
+		expect(pr?.author).toBeNull();
+	});
+
 	it("drops items that don't match the expected gh search prs shape", () => {
 		expect(mapSearchResults([{ nonsense: true }], () => null)).toEqual([]);
 	});

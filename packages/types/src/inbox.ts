@@ -5,7 +5,7 @@ export const InboxPullRequestSchema = z.object({
 	title: z.string(),
 	url: z.string(),
 	repository: z.string(), // "owner/repo"
-	author: z.string(),
+	author: z.string().nullable(),
 	isDraft: z.boolean(),
 	updatedAt: z.string(),
 	/** runId when a run already exists for this PR in this repo, else null. */

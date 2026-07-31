@@ -13,19 +13,25 @@ const GhSearchPrSchema = z.object({
 });
 
 const SEARCH_FIELDS = "number,title,url,repository,author,isDraft,updatedAt";
+const SEARCH_LIMIT = 50;
 
 /**
  * Map raw `gh search prs --json` items into the inbox wire shape. Items that
  * don't match the expected gh output shape are silently dropped rather than
- * failing the whole inbox — a malformed row shouldn't hide the rest.
+ * failing the whole inbox — a malformed row shouldn't hide the rest. Dropped
+ * rows are logged (once, with a count) so the mismatch isn't invisible.
  */
 export function mapSearchResults(
 	raw: unknown[],
 	runIdFor: (repo: string, prNumber: number) => string | null,
 ): InboxPullRequest[] {
-	return raw.flatMap((item) => {
+	let dropped = 0;
+	const pullRequests = raw.flatMap((item) => {
 		const parsed = GhSearchPrSchema.safeParse(item);
-		if (!parsed.success) return [];
+		if (!parsed.success) {
+			dropped++;
+			return [];
+		}
 		const pr = parsed.data;
 		return [
 			{
@@ -33,13 +39,17 @@ export function mapSearchResults(
 				title: pr.title,
 				url: pr.url,
 				repository: pr.repository.nameWithOwner,
-				author: pr.author?.login ?? "",
+				author: pr.author?.login ?? null,
 				isDraft: pr.isDraft,
 				updatedAt: pr.updatedAt,
 				runId: runIdFor(pr.repository.nameWithOwner, pr.number),
 			},
 		];
 	});
+	if (dropped > 0) {
+		console.warn(`inbox: dropped ${dropped} malformed gh search prs row(s)`);
+	}
+	return pullRequests;
 }
 
 /** PRs across all orgs awaiting the signed-in user's review. Throws on gh failure. */
@@ -50,7 +60,8 @@ export async function searchReviewRequested(cwd: string): Promise<unknown[]> {
 			"prs",
 			"--review-requested=@me",
 			"--state=open",
-			"--limit=50",
+			"--limit",
+			String(SEARCH_LIMIT),
 			"--json",
 			SEARCH_FIELDS,
 		],
