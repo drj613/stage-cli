@@ -46,7 +46,12 @@ export function runRoutes(db: StageDb): Route[] {
 			method: "GET",
 			pattern: "/api/runs",
 			handler: (_req, res) => {
-				const runs = db.select().from(chapterRun).orderBy(desc(chapterRun.generatedAt)).all();
+				const runs = db
+					.select()
+					.from(chapterRun)
+					.orderBy(desc(chapterRun.generatedAt))
+					.limit(200)
+					.all();
 				const counts = db
 					.select({ runId: chapter.runId, chapterCount: count() })
 					.from(chapter)
