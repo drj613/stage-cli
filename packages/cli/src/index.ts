@@ -8,6 +8,7 @@ import { runPrep } from "./prep.js";
 import { WORKING_TREE_REF } from "./schema.js";
 import type { DiffScopeOptions } from "./scope.js";
 import { show } from "./show.js";
+import { start } from "./start.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
@@ -93,6 +94,14 @@ withDiffScope(
 	closeDb();
 	process.stdout.write(`${runId}\n`);
 });
+
+program
+	.command("start")
+	.description("Start the Stage dashboard: browse past runs and PRs awaiting your review")
+	.option("--no-open", "Do not open a browser")
+	.action(async (opts: { open: boolean }) => {
+		await start({ open: opts.open });
+	});
 
 program.parseAsync(process.argv).catch((err) => {
 	process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
