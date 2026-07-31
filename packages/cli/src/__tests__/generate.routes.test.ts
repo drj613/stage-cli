@@ -3,7 +3,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { closeDb, getDb } from "../db/client.js";
+import { closeDb, getDb, type StageDb } from "../db/client.js";
 import { JobManager, type JobRequest } from "../generation/job-manager.js";
 import { generateRoutes } from "../routes/generate.js";
 import { insertChaptersFile } from "../runs/import-chapters.js";
@@ -54,6 +54,7 @@ describe("generate routes", () => {
 	let handle: ServerHandle | null = null;
 	let requested: JobRequest[] = [];
 	let jobs: JobManager;
+	let db: StageDb;
 	/** Holds the runner mid-job so a second request lands while one is in flight. */
 	let blockRunner: () => void;
 	let releaseRunner: () => void;
@@ -64,7 +65,7 @@ describe("generate routes", () => {
 		await fs.mkdir(webDist);
 		await fs.writeFile(path.join(webDist, "index.html"), "<html></html>");
 		closeDb();
-		const db = getDb({ dbPath: path.join(tmpDir, "db.sqlite") });
+		db = getDb({ dbPath: path.join(tmpDir, "db.sqlite") });
 		insertChaptersFile(
 			db,
 			makeFixture(),
@@ -148,6 +149,31 @@ describe("generate routes", () => {
 		const res = await request(port(), "POST", "/api/generate", { model: "opus" });
 		expect(res.status).toBe(400);
 		expect(requested).toEqual([]);
+	});
+
+	it("falls back to the server's default model when the body omits one", async () => {
+		if (!handle) throw new Error("server not started");
+		await handle.close();
+		handle = await startServer({ routes: generateRoutes(db, jobs, "opus") });
+		const res = await request(port(), "POST", "/api/generate", {
+			prUrl: "https://github.com/acme/widgets/pull/7",
+		});
+		expect(res.status).toBe(202);
+		await jobs.settled();
+		expect(requested).toMatchObject([{ model: "opus" }]);
+	});
+
+	it("lets a request body override the server's default model", async () => {
+		if (!handle) throw new Error("server not started");
+		await handle.close();
+		handle = await startServer({ routes: generateRoutes(db, jobs, "opus") });
+		const res = await request(port(), "POST", "/api/generate", {
+			prUrl: "https://github.com/acme/widgets/pull/7",
+			model: "haiku",
+		});
+		expect(res.status).toBe(202);
+		await jobs.settled();
+		expect(requested).toMatchObject([{ model: "haiku" }]);
 	});
 
 	it("400s an unknown model", async () => {

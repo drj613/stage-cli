@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { Command, Option } from "commander";
 import { z } from "zod";
 import { closeDb } from "./db/client.js";
+import { GENERATION_MODEL } from "./generation/job-manager.js";
 import { runImport } from "./import.js";
 import { runPrep } from "./prep.js";
 import { WORKING_TREE_REF } from "./schema.js";
@@ -24,6 +25,13 @@ const refOption = new Option(
 	"--ref <mode>",
 	"Diff scope: work (staged + unstaged + untracked), staged, or unstaged (default: auto-detect)",
 ).choices(Object.values(WORKING_TREE_REF));
+
+const modelOption = new Option(
+	"--model <model>",
+	"Default model for headless chapter generation from the dashboard",
+)
+	.choices(Object.values(GENERATION_MODEL))
+	.default(GENERATION_MODEL.SONNET);
 
 interface DiffCommandOptions {
 	base?: string;
@@ -79,9 +87,13 @@ withDiffScope(
 	program
 		.command("show")
 		.description("Load a chapters.json file and open it in a local browser")
-		.argument("<path>", "Path to a chapters.json file"),
-).action(async (jsonPath: string, refs: string[], opts: DiffCommandOptions) => {
-	await show(jsonPath, toDiffScopeOptions(refs, opts));
+		.argument("<path>", "Path to a chapters.json file")
+		.addOption(modelOption),
+).action(async (jsonPath: string, refs: string[], opts: DiffCommandOptions & { model: string }) => {
+	await show(jsonPath, {
+		...toDiffScopeOptions(refs, opts),
+		model: z.enum(GENERATION_MODEL).parse(opts.model),
+	});
 });
 
 withDiffScope(
@@ -99,8 +111,9 @@ program
 	.command("start")
 	.description("Start the Stage dashboard: browse past runs and PRs awaiting your review")
 	.option("--no-open", "Do not open a browser")
-	.action(async (opts: { open: boolean }) => {
-		await start({ open: opts.open });
+	.addOption(modelOption)
+	.action(async (opts: { open: boolean; model: string }) => {
+		await start({ open: opts.open, model: z.enum(GENERATION_MODEL).parse(opts.model) });
 	});
 
 program.parseAsync(process.argv).catch((err) => {
