@@ -17,7 +17,7 @@ const SEARCH_LIMIT = 50;
 
 /**
  * Map raw `gh search prs --json` items into the inbox wire shape. Items that
- * don't match the expected gh output shape are silently dropped rather than
+ * don't match the expected gh output shape are dropped rather than
  * failing the whole inbox — a malformed row shouldn't hide the rest. Dropped
  * rows are logged (once, with a count) so the mismatch isn't invisible.
  */
