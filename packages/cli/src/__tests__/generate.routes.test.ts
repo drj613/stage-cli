@@ -93,7 +93,6 @@ describe("generate routes", () => {
 	it("queues a job against the repo root of a past run", async () => {
 		const res = await request(port(), "POST", "/api/generate", {
 			prUrl: "https://github.com/acme/widgets/pull/7",
-			repository: "acme/widgets",
 		});
 		expect(res.status).toBe(202);
 		await jobs.settled();
@@ -110,7 +109,6 @@ describe("generate routes", () => {
 	it("reports job status once finished", async () => {
 		const res = await request(port(), "POST", "/api/generate", {
 			prUrl: "https://github.com/acme/widgets/pull/7",
-			repository: "acme/widgets",
 		});
 		await jobs.settled();
 		const jobId = expectJobId(res.body);
@@ -122,9 +120,31 @@ describe("generate routes", () => {
 	it("rejects repos with no known local clone", async () => {
 		const res = await request(port(), "POST", "/api/generate", {
 			prUrl: "https://github.com/other/thing/pull/1",
-			repository: "other/thing",
 		});
 		expect(res.status).toBe(422);
+		expect(requested).toEqual([]);
+	});
+
+	it("400s a URL that is not a github.com PR", async () => {
+		const res = await request(port(), "POST", "/api/generate", {
+			prUrl: "https://gitlab.com/acme/widgets/-/merge_requests/7",
+		});
+		expect(res.status).toBe(400);
+		expect(requested).toEqual([]);
+	});
+
+	it("400s a body missing prUrl", async () => {
+		const res = await request(port(), "POST", "/api/generate", { model: "opus" });
+		expect(res.status).toBe(400);
+		expect(requested).toEqual([]);
+	});
+
+	it("400s an unknown model", async () => {
+		const res = await request(port(), "POST", "/api/generate", {
+			prUrl: "https://github.com/acme/widgets/pull/7",
+			model: "gpt",
+		});
+		expect(res.status).toBe(400);
 		expect(requested).toEqual([]);
 	});
 
