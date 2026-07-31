@@ -14,6 +14,7 @@
     "./prologue": "./src/prologue.ts",
     "./pull-request": "./src/pull-request.ts",
     "./run-summary": "./src/run-summary.ts",
+    "./scope": "./src/scope.ts",
     "./view-state": "./src/view-state.ts",
     "./viewer": "./src/viewer.ts"
   },

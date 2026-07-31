@@ -6,5 +6,6 @@ export * from "./parsed-diff.ts";
 export * from "./prologue.ts";
 export * from "./pull-request.ts";
 export * from "./run-summary.ts";
+export * from "./scope.ts";
 export * from "./view-state.ts";
 export * from "./viewer.ts";

@@ -1,10 +1,11 @@
 import { z } from "zod";
+import { SCOPE_KIND } from "./scope.ts";
 
 export const RunSummarySchema = z.object({
 	id: z.string(),
 	repoName: z.string(),
 	prNumber: z.number().nullable(),
-	scopeKind: z.string(),
+	scopeKind: z.enum(SCOPE_KIND),
 	generatedAt: z.string(),
 	chapterCount: z.number(),
 });
