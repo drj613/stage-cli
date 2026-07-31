@@ -1,20 +1,31 @@
 import type { GenerateAccepted, GenerationJob } from "@stagereview/types/generation";
 import { z } from "zod";
 import type { StageDb } from "../db/client.js";
-import { GENERATION_MODEL, type JobManager } from "../generation/job-manager.js";
+import {
+	GENERATION_MODEL,
+	type GenerationModel,
+	type JobManager,
+} from "../generation/job-manager.js";
 import { parsePullRequestUrl, toNameWithOwner, toPullRequestUrl } from "../github/index.js";
 import { RunIndex } from "../runs/run-index.js";
 import type { Route } from "../server.js";
 import { parseJsonBody, writeJson } from "./json.js";
 import { enforceSameOrigin } from "./pull-request-shared.js";
 
-const generateInput = z.object({
-	prUrl: z.string().url(),
-	model: z.enum(GENERATION_MODEL).default(GENERATION_MODEL.SONNET),
-});
-
-/** Kick off and poll headless chapter generation for a PR. */
-export function generateRoutes(db: StageDb, jobs: JobManager): Route[] {
+/**
+ * Kick off and poll headless chapter generation for a PR. `defaultModel` is the
+ * model requests fall back to when the body omits one — set from `--model` at
+ * server startup; a request body's `model` always overrides it.
+ */
+export function generateRoutes(
+	db: StageDb,
+	jobs: JobManager,
+	defaultModel: GenerationModel = GENERATION_MODEL.SONNET,
+): Route[] {
+	const generateInput = z.object({
+		prUrl: z.string().url(),
+		model: z.enum(GENERATION_MODEL).default(defaultModel),
+	});
 	return [
 		{
 			method: "POST",

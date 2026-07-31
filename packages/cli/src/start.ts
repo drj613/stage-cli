@@ -1,22 +1,19 @@
 import open from "open";
 import { closeDb, getDb } from "./db/client.js";
-import { claudeRunner, JobManager } from "./generation/job-manager.js";
+import type { GenerationModel } from "./generation/job-manager.js";
 import { coreRoutes } from "./routes/core.js";
-import { generateRoutes } from "./routes/generate.js";
-import { inboxRoutes } from "./routes/inbox.js";
 import { LOOPBACK_HOST, startServer, waitForShutdownSignal } from "./server.js";
 
 export interface StartOptions {
 	open: boolean;
+	model: GenerationModel;
 }
 
 export async function start(options: StartOptions): Promise<void> {
 	const db = getDb();
 
-	const jobs = new JobManager(claudeRunner);
-
 	const handle = await startServer({
-		routes: [...coreRoutes(db), ...inboxRoutes(db), ...generateRoutes(db, jobs)],
+		routes: coreRoutes(db, options.model),
 	});
 	const { port } = handle;
 	const url = `http://${LOOPBACK_HOST}:${port}/`;
