@@ -32,8 +32,7 @@ describe("runImport", () => {
 
 		const runId = await runImport(fixturePath, {}, db);
 
-		const reopened = getDb({ dbPath });
-		const after = reopened.select().from(chapterRun).all();
+		const after = db.select().from(chapterRun).all();
 		expect(after.length).toBe(before + 1);
 		expect(runId).toMatch(/^[0-9a-f-]{36}$/);
 		expect(after.find((row) => row.id === runId)).toBeDefined();
