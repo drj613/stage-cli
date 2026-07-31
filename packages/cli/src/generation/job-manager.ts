@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 
 export const JOB_STATUS = {
 	QUEUED: "queued",
@@ -39,7 +40,7 @@ export type JobRunner = (job: JobRequest) => Promise<string>;
  */
 export class JobManager {
 	private readonly jobs = new Map<string, Job>();
-	private readonly queue: string[] = [];
+	private readonly queue: Job[] = [];
 	private running = false;
 	private idle: Promise<void> = Promise.resolve();
 	private resolveIdle: () => void = () => {};
@@ -47,24 +48,28 @@ export class JobManager {
 	constructor(private readonly runner: JobRunner) {}
 
 	enqueue(request: JobRequest): string {
-		const id = randomUUID();
-		this.jobs.set(id, { ...request, id, status: JOB_STATUS.QUEUED, runId: null, error: null });
-		this.queue.push(id);
+		const job: Job = {
+			...request,
+			id: randomUUID(),
+			status: JOB_STATUS.QUEUED,
+			runId: null,
+			error: null,
+		};
+		this.jobs.set(job.id, job);
+		this.queue.push(job);
 		if (!this.running) {
 			this.idle = new Promise((resolve) => {
 				this.resolveIdle = resolve;
 			});
 			void this.drain();
 		}
-		return id;
+		return job.id;
 	}
 
+	/** A snapshot of the job — callers can't mutate the queue's state through it. */
 	get(id: string): Job | null {
-		return this.jobs.get(id) ?? null;
-	}
-
-	list(): Job[] {
-		return [...this.jobs.values()];
+		const job = this.jobs.get(id);
+		return job ? { ...job } : null;
 	}
 
 	/** Resolves when the queue is empty. For tests and graceful shutdown. */
@@ -74,20 +79,17 @@ export class JobManager {
 
 	private async drain(): Promise<void> {
 		this.running = true;
-		let id = this.queue.shift();
-		while (id !== undefined) {
-			const job = this.jobs.get(id);
-			if (job) {
-				job.status = JOB_STATUS.RUNNING;
-				try {
-					job.runId = await this.runner(job);
-					job.status = JOB_STATUS.SUCCEEDED;
-				} catch (err) {
-					job.status = JOB_STATUS.FAILED;
-					job.error = err instanceof Error ? err.message : String(err);
-				}
+		let job = this.queue.shift();
+		while (job !== undefined) {
+			job.status = JOB_STATUS.RUNNING;
+			try {
+				job.runId = await this.runner(job);
+				job.status = JOB_STATUS.SUCCEEDED;
+			} catch (err) {
+				job.status = JOB_STATUS.FAILED;
+				job.error = err instanceof Error ? err.message : String(err);
 			}
-			id = this.queue.shift();
+			job = this.queue.shift();
 		}
 		this.running = false;
 		this.resolveIdle();
@@ -96,7 +98,33 @@ export class JobManager {
 
 const AGENT_OUTPUT_LIMIT_BYTES = 10 * 1024 * 1024;
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000;
-const UUID_PATTERN = /^[0-9a-f-]{36}$/i;
+/** How much stderr to quote back when the agent fails — enough to be diagnostic, not a wall of log. */
+const STDERR_TAIL_LINES = 5;
+/** Nobody is at the keyboard to answer tool prompts, and this daemon only ever runs on the user's own machine against their own clones. */
+const PERMISSION_MODE = "bypassPermissions";
+
+const runIdSchema = z.string().uuid();
+
+/** Last ~5 lines of stderr, formatted for appending to an error message. */
+function stderrTail(stderr: string): string {
+	const lines = stderr.trim().split("\n").slice(-STDERR_TAIL_LINES);
+	return lines.length > 0 && lines[0] !== "" ? `\n${lines.join("\n")}` : "";
+}
+
+/**
+ * The runId the agent was told to print as its last line. Throws when the agent
+ * ended on anything else — a missing or malformed runId means the run didn't
+ * land in the database, so failing loudly beats surfacing a bogus link.
+ */
+export function parseRunnerOutput(stdout: string): string {
+	const lines = stdout.trim().split("\n");
+	const lastLine = lines[lines.length - 1]?.trim() ?? "";
+	const parsed = runIdSchema.safeParse(lastLine);
+	if (!parsed.success) {
+		throw new Error(`Agent did not return a runId. Last output: ${lastLine || "(empty)"}`);
+	}
+	return parsed.data;
+}
 
 /**
  * The real runner: headless claude with the stage-chapters skill, told to
@@ -113,25 +141,23 @@ export function claudeRunner(job: JobRequest): Promise<string> {
 		].join("\n");
 		execFile(
 			"claude",
-			["-p", prompt, "--model", job.model],
+			["-p", prompt, "--model", job.model, "--permission-mode", PERMISSION_MODE],
 			{
 				cwd: job.repoRoot,
 				encoding: "utf8",
 				maxBuffer: AGENT_OUTPUT_LIMIT_BYTES,
 				timeout: AGENT_TIMEOUT_MS,
 			},
-			(err, stdout) => {
+			(err, stdout, stderr) => {
 				if (err) {
-					reject(new Error(err.message));
+					reject(new Error(`${err.message}${stderrTail(stderr)}`));
 					return;
 				}
-				const lines = stdout.trim().split("\n");
-				const runId = lines[lines.length - 1]?.trim();
-				if (!runId || !UUID_PATTERN.test(runId)) {
-					reject(new Error(`Agent did not return a runId. Last output: ${runId || "(empty)"}`));
-					return;
+				try {
+					resolve(parseRunnerOutput(stdout));
+				} catch (parseErr) {
+					reject(parseErr);
 				}
-				resolve(runId);
 			},
 		);
 	});

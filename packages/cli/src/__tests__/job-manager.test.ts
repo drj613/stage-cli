@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { JobManager } from "../generation/job-manager.js";
+import { JobManager, parseRunnerOutput } from "../generation/job-manager.js";
 
 describe("JobManager", () => {
 	it("runs jobs sequentially", async () => {
@@ -51,5 +52,26 @@ describe("JobManager", () => {
 		expect(manager.get(bad)?.status).toBe("failed");
 		expect(manager.get(bad)?.error).toBe("boom");
 		expect(manager.get(good)?.status).toBe("succeeded");
+	});
+});
+
+describe("parseRunnerOutput", () => {
+	it("takes the runId from the agent's last line", () => {
+		const runId = randomUUID();
+		expect(parseRunnerOutput(`Generated 4 chapters.\nWrote chapters.json\n${runId}\n`)).toBe(runId);
+	});
+
+	it("rejects a last line that is not a runId", () => {
+		expect(() => parseRunnerOutput("Done! Chapters are ready.\n")).toThrow(
+			/Agent did not return a runId. Last output: Done! Chapters are ready\./,
+		);
+	});
+
+	it("rejects a 36-character non-UUID", () => {
+		expect(() => parseRunnerOutput("-".repeat(36))).toThrow(/did not return a runId/);
+	});
+
+	it("rejects empty output", () => {
+		expect(() => parseRunnerOutput("   \n")).toThrow(/Last output: \(empty\)/);
 	});
 });
