@@ -7,6 +7,8 @@ import { parseRepoName } from "../git.js";
 import type { Route } from "../server.js";
 import { writeJson } from "./json.js";
 
+const RUN_LIST_LIMIT = 200;
+
 type ChapterRow = typeof chapter.$inferSelect;
 type ChapterRunRow = typeof chapterRun.$inferSelect;
 type KeyChangeRow = typeof keyChange.$inferSelect;
@@ -50,7 +52,7 @@ export function runRoutes(db: StageDb): Route[] {
 					.select()
 					.from(chapterRun)
 					.orderBy(desc(chapterRun.generatedAt))
-					.limit(200)
+					.limit(RUN_LIST_LIMIT)
 					.all();
 				const counts = db
 					.select({ runId: chapter.runId, chapterCount: count() })
