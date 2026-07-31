@@ -1,6 +1,7 @@
 import type { InboxPullRequest } from "@stagereview/types/inbox";
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, Loader2, TriangleAlert } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
+import { ListEmpty, ListNotice } from "@/components/dashboard/list-notice";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -16,12 +17,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatTimeAgo } from "@/lib/format";
-import { useChapterGeneration, useInbox } from "@/lib/use-inbox";
+import { type ChapterGeneration, useChapterGeneration, useInbox } from "@/lib/use-inbox";
 
 export function InboxList() {
-	const { data, isLoading } = useInbox();
+	const { data, isLoading, error } = useInbox();
 
-	if (isLoading || !data) {
+	if (isLoading) {
 		return (
 			<div className="space-y-3">
 				<Skeleton className="h-16 w-full" />
@@ -30,27 +31,33 @@ export function InboxList() {
 		);
 	}
 
+	if (error || !data) {
+		return (
+			<ListNotice
+				title="Couldn't load your inbox."
+				details={error instanceof Error ? error.message : "The Stage server didn't respond."}
+			/>
+		);
+	}
+
 	if (!data.available) {
 		return (
-			<div className="flex items-start gap-3 rounded-lg border border-dashed px-4 py-4 text-sm">
-				<TriangleAlert className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-				<div className="min-w-0">
-					<p className="text-foreground">Couldn't reach GitHub.</p>
-					<p className="mt-1 text-muted-foreground text-xs">{data.reason}</p>
-					<p className="mt-1 text-muted-foreground text-xs">
-						You may need to run <code>gh auth login</code>.
-					</p>
-				</div>
-			</div>
+			<ListNotice
+				title="Couldn't reach GitHub."
+				details={
+					<>
+						<p>{data.reason}</p>
+						<p>
+							You may need to run <code>gh auth login</code>.
+						</p>
+					</>
+				}
+			/>
 		);
 	}
 
 	if (data.pullRequests.length === 0) {
-		return (
-			<p className="rounded-lg border border-dashed px-4 py-6 text-center text-muted-foreground text-sm">
-				Nothing is waiting on your review.
-			</p>
-		);
+		return <ListEmpty>Nothing is waiting on your review.</ListEmpty>;
 	}
 
 	return (
@@ -89,17 +96,14 @@ function InboxRow({ pullRequest }: { pullRequest: InboxPullRequest }) {
 					</Link>
 				</Button>
 			) : (
-				<GenerateButton
-					isRunning={generation.isRunning}
-					onConfirm={() => generation.start(pullRequest.url)}
-				/>
+				<GenerateButton generation={generation} prUrl={pullRequest.url} />
 			)}
 		</div>
 	);
 }
 
-function GenerateButton({ isRunning, onConfirm }: { isRunning: boolean; onConfirm: () => void }) {
-	if (isRunning) {
+function GenerateButton({ generation, prUrl }: { generation: ChapterGeneration; prUrl: string }) {
+	if (generation.isRunning) {
 		return (
 			<Button size="sm" variant="secondary" disabled>
 				<Loader2 className="size-3.5 animate-spin" />
@@ -124,7 +128,7 @@ function GenerateButton({ isRunning, onConfirm }: { isRunning: boolean; onConfir
 				</AlertDialogHeader>
 				<AlertDialogFooter>
 					<AlertDialogCancel>Cancel</AlertDialogCancel>
-					<AlertDialogAction onClick={onConfirm}>Generate</AlertDialogAction>
+					<AlertDialogAction onClick={() => generation.start(prUrl)}>Generate</AlertDialogAction>
 				</AlertDialogFooter>
 			</AlertDialogContent>
 		</AlertDialog>

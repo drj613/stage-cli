@@ -1,12 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import { BookOpen } from "lucide-react";
+import { ListEmpty, ListNotice } from "@/components/dashboard/list-notice";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatTimeAgo } from "@/lib/format";
 import { useRuns } from "@/lib/use-runs";
 
 export function RunList() {
-	const { data, isLoading } = useRuns();
+	const { data, isLoading, error } = useRuns();
 
 	if (isLoading) {
 		return (
@@ -18,18 +19,22 @@ export function RunList() {
 		);
 	}
 
-	const runs = data?.runs ?? [];
-	if (runs.length === 0) {
+	if (error || !data) {
 		return (
-			<p className="rounded-lg border border-dashed px-4 py-6 text-center text-muted-foreground text-sm">
-				No runs yet. Generate chapters for a pull request to get started.
-			</p>
+			<ListNotice
+				title="Couldn't load your runs."
+				details={error instanceof Error ? error.message : "The Stage server didn't respond."}
+			/>
 		);
+	}
+
+	if (data.runs.length === 0) {
+		return <ListEmpty>No runs yet. Generate chapters for a pull request to get started.</ListEmpty>;
 	}
 
 	return (
 		<div className="divide-y divide-border overflow-hidden rounded-lg border">
-			{runs.map((run) => (
+			{data.runs.map((run) => (
 				<Link
 					key={run.id}
 					to="/runs/$runId"

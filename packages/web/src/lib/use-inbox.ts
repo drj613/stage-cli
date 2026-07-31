@@ -1,6 +1,14 @@
+import {
+	GenerateAcceptedSchema,
+	type GenerationJob,
+	GenerationJobSchema,
+	isTerminalJobStatus,
+	JOB_STATUS,
+	type JobStatus,
+} from "@stagereview/types/generation";
 import { type InboxResponse, InboxResponseSchema } from "@stagereview/types/inbox";
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { RUNS_QUERY_KEY } from "./use-runs";
 import { jsonFetch } from "./use-view-state";
@@ -13,28 +21,7 @@ const GENERATION_JOB_ROOT = "generation-job";
 const INBOX_STALE_TIME_MS = 60_000;
 const JOB_POLL_INTERVAL_MS = 3_000;
 
-export const JOB_STATUS = {
-	QUEUED: "queued",
-	RUNNING: "running",
-	SUCCEEDED: "succeeded",
-	FAILED: "failed",
-} as const;
-export type JobStatus = (typeof JOB_STATUS)[keyof typeof JOB_STATUS];
-
-const GenerationJobSchema = z.object({
-	id: z.string(),
-	status: z.enum(JOB_STATUS),
-	runId: z.string().nullable(),
-	error: z.string().nullable(),
-});
-export type GenerationJob = z.infer<typeof GenerationJobSchema>;
-
-const GenerateAcceptedSchema = z.object({ jobId: z.string() });
 const ErrorBodySchema = z.object({ error: z.string() });
-
-export function isTerminalJobStatus(status: JobStatus): boolean {
-	return status === JOB_STATUS.SUCCEEDED || status === JOB_STATUS.FAILED;
-}
 
 /** PRs waiting on the viewer's review, cross-org, via `gh search prs`. */
 export function useInbox() {
@@ -65,6 +52,10 @@ async function startGeneration(prUrl: string): Promise<string> {
 	return GenerateAcceptedSchema.parse(raw).jobId;
 }
 
+function errorMessage(error: unknown): string | null {
+	return error instanceof Error ? error.message : null;
+}
+
 export interface ChapterGeneration {
 	start: (prUrl: string) => void;
 	/** True from the moment generation is requested until the job settles. */
@@ -87,13 +78,13 @@ export function useChapterGeneration(): ChapterGeneration {
 	const {
 		mutate,
 		isPending,
-		error: mutationError,
+		error: startError,
 	} = useMutation({
 		mutationFn: startGeneration,
 		onSuccess: setJobId,
 	});
 
-	const { data: job } = useQuery<GenerationJob>({
+	const { data: job, error: pollError } = useQuery<GenerationJob>({
 		queryKey: [GENERATION_JOB_ROOT, jobId],
 		queryFn:
 			jobId === null
@@ -102,10 +93,14 @@ export function useChapterGeneration(): ChapterGeneration {
 						GenerationJobSchema.parse(
 							await jsonFetch<unknown>(`/api/generate/${encodeURIComponent(jobId)}`),
 						),
-		refetchInterval: (query) =>
-			query.state.data && isTerminalJobStatus(query.state.data.status)
-				? false
-				: JOB_POLL_INTERVAL_MS,
+		// A job the server no longer knows about (404) is never coming back, so
+		// stop polling on error rather than spinning "Generating" forever.
+		retry: false,
+		refetchInterval: (query) => {
+			if (query.state.status === "error") return false;
+			const data = query.state.data;
+			return data && isTerminalJobStatus(data.status) ? false : JOB_POLL_INTERVAL_MS;
+		},
 	});
 
 	const succeeded = job?.status === JOB_STATUS.SUCCEEDED;
@@ -115,25 +110,14 @@ export function useChapterGeneration(): ChapterGeneration {
 		void queryClient.invalidateQueries({ queryKey: INBOX_QUERY_KEY });
 	}, [succeeded, queryClient]);
 
-	const start = useCallback(
-		(prUrl: string) => {
-			mutate(prUrl);
-		},
-		[mutate],
-	);
-
 	const status = job?.status ?? null;
-	const settled = status !== null && isTerminalJobStatus(status);
-	const requestError = mutationError instanceof Error ? mutationError.message : null;
+	const settled = pollError !== null || (status !== null && isTerminalJobStatus(status));
 
-	return useMemo(
-		() => ({
-			start,
-			isRunning: isPending || (jobId !== null && !settled),
-			status,
-			runId: job?.runId ?? null,
-			error: requestError ?? job?.error ?? null,
-		}),
-		[start, isPending, jobId, settled, status, job, requestError],
-	);
+	return {
+		start: (prUrl) => mutate(prUrl),
+		isRunning: isPending || (jobId !== null && !settled),
+		status,
+		runId: job?.runId ?? null,
+		error: errorMessage(startError) ?? errorMessage(pollError) ?? job?.error ?? null,
+	};
 }
