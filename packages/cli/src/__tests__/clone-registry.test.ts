@@ -91,6 +91,16 @@ describe("CloneRegistry.resolveRepoRoot", () => {
 		await makeClone("late", "git@github.com:acme/late.git");
 		const summary = registry.rescan();
 		expect(summary.repoCount).toBeGreaterThanOrEqual(1);
+		expect(summary.ownerCount).toBeGreaterThanOrEqual(1);
 		expect(registry.resolveRepoRoot("acme/late")).not.toBeNull();
+	});
+
+	it("only picks up a chapter_run inserted after create() once rescan() is called", async () => {
+		const dir = await makeClone("elsewhere/api", "git@github.com:acme/api.git");
+		const registry = CloneRegistry.create(db); // no roots, no runs yet
+		seedRun(dir, "git@github.com:acme/api.git");
+		expect(registry.resolveRepoRoot("acme/api")).toBeNull();
+		registry.rescan();
+		expect(registry.resolveRepoRoot("acme/api")).toBe(dir);
 	});
 });
