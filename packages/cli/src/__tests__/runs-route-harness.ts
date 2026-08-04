@@ -18,6 +18,10 @@ export interface JsonResponse {
  * JSON body and/or custom headers (e.g. an `Origin`/`Host` override for a
  * same-origin guard test) — so the request/response plumbing never varies
  * per test.
+ *
+ * `Content-Length` is set explicitly rather than left to Node's default
+ * chunked encoding: `http.request` only chunks a body by default for
+ * methods like POST/PUT/PATCH, silently dropping a `DELETE` body otherwise.
  */
 export function requestJson(
 	port: number,
@@ -35,7 +39,13 @@ export function requestJson(
 				method,
 				path: requestPath,
 				agent: false,
-				headers: payload ? { "Content-Type": "application/json", ...headers } : headers,
+				headers: payload
+					? {
+							"Content-Type": "application/json",
+							"Content-Length": payload.length,
+							...headers,
+						}
+					: headers,
 			},
 			(res) => {
 				const chunks: Buffer[] = [];

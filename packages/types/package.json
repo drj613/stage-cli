@@ -6,7 +6,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./browse": "./src/browse.ts",
     "./chapters": "./src/chapters.ts",
+    "./clone-roots": "./src/clone-roots.ts",
     "./comments": "./src/comments.ts",
     "./diff": "./src/diff.ts",
     "./generation": "./src/generation.ts",
