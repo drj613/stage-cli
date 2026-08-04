@@ -9,6 +9,7 @@ import { JobManager } from "../generation/job-manager.js";
 import { pullRequestListRoutes } from "../routes/pull-requests.js";
 import { SCOPE_KIND } from "../schema.js";
 import { type ServerHandle, startServer } from "../server.js";
+import { writeCloneConfig } from "./fixtures.js";
 import { getJson as request } from "./runs-route-harness.js";
 
 const ORIGIN_URL = "git@github.com:acme/widgets.git";
@@ -58,11 +59,7 @@ describe("pull-requests routes", () => {
 
 	/** Registers the repo as a known clone (via RunIndex) without generating a run for our PR. */
 	async function makeClone(): Promise<void> {
-		await fs.mkdir(path.join(repoRoot, ".git"), { recursive: true });
-		await fs.writeFile(
-			path.join(repoRoot, ".git", "config"),
-			`[remote "origin"]\n\turl = ${ORIGIN_URL}\n`,
-		);
+		await writeCloneConfig(repoRoot, ORIGIN_URL);
 		seedRun(HEAD_SHA, null);
 	}
 

@@ -1,141 +1,36 @@
-import fs from "node:fs/promises";
-import http from "node:http";
-import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CloneRegistry } from "../clones/clone-registry.js";
+import { describe, expect, it } from "vitest";
 import { addCloneRoot } from "../clones/clone-root-store.js";
-import { closeDb, getDb, type StageDb } from "../db/client.js";
-import { JobManager, type JobRequest } from "../generation/job-manager.js";
-import { generateRoutes } from "../routes/generate.js";
-import { insertChaptersFile } from "../runs/import-chapters.js";
-import { LOOPBACK_HOST, type ServerHandle, startServer } from "../server.js";
-import { makeFixture, makeRepoContext } from "./fixtures.js";
-
-interface JsonResponse {
-	status: number;
-	body: unknown;
-}
-
-function request(
-	port: number,
-	method: string,
-	requestPath: string,
-	body?: unknown,
-): Promise<JsonResponse> {
-	return new Promise((resolve, reject) => {
-		const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
-		const req = http.request(
-			{
-				hostname: LOOPBACK_HOST,
-				port,
-				method,
-				path: requestPath,
-				agent: false,
-				headers: payload ? { "Content-Type": "application/json" } : {},
-			},
-			(res) => {
-				const chunks: Buffer[] = [];
-				res.on("data", (c: Buffer) => chunks.push(c));
-				res.on("end", () => {
-					const text = Buffer.concat(chunks).toString("utf8");
-					resolve({ status: res.statusCode ?? 0, body: text ? JSON.parse(text) : null });
-				});
-			},
-		);
-		req.on("error", reject);
-		if (payload) req.write(payload);
-		req.end();
-	});
-}
-
-/** Creates a bare-bones git working tree at `dir` with the given origin url. */
-async function makeClone(dir: string, originUrl: string): Promise<void> {
-	await fs.mkdir(path.join(dir, ".git"), { recursive: true });
-	await fs.writeFile(path.join(dir, ".git", "config"), `[remote "origin"]\n\turl = ${originUrl}\n`);
-}
+import { writeCloneConfig } from "./fixtures.js";
+import { expectJobId, setupGenerateRoutesTest } from "./generate-route-harness.js";
+import { requestJson } from "./runs-route-harness.js";
 
 describe("generate routes", () => {
-	let tmpDir = "";
-	let knownRepoRoot = "";
-	let handle: ServerHandle | null = null;
-	let requested: JobRequest[] = [];
-	let jobs: JobManager;
-	let db: StageDb;
-	let registry: CloneRegistry;
-	/** Holds the runner mid-job so a second request lands while one is in flight. */
-	let blockRunner: () => void;
-	let releaseRunner: () => void;
-
-	beforeEach(async () => {
-		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage-generate-"));
-		const webDist = path.join(tmpDir, "web-dist");
-		await fs.mkdir(webDist);
-		await fs.writeFile(path.join(webDist, "index.html"), "<html></html>");
-		closeDb();
-		db = getDb({ dbPath: path.join(tmpDir, "db.sqlite") });
-		knownRepoRoot = path.join(tmpDir, "clones", "acme-widgets");
-		await makeClone(knownRepoRoot, "git@github.com:Acme/Widgets.git");
-		insertChaptersFile(
-			db,
-			makeFixture(),
-			makeRepoContext({
-				root: knownRepoRoot,
-				originUrl: "git@github.com:Acme/Widgets.git",
-			}),
-		);
-		registry = CloneRegistry.create(db);
-		requested = [];
-		releaseRunner = () => {};
-		let blocked: Promise<void> = Promise.resolve();
-		blockRunner = () => {
-			blocked = new Promise((resolve) => {
-				releaseRunner = resolve;
-			});
-		};
-		jobs = new JobManager(async (job) => {
-			requested.push(job);
-			await blocked;
-			return "run-abc";
-		});
-		handle = await startServer({ webDistPath: webDist, routes: generateRoutes(jobs, registry) });
-	});
-
-	afterEach(async () => {
-		await handle?.close();
-		handle = null;
-		closeDb();
-		await fs.rm(tmpDir, { recursive: true, force: true });
-	});
-
-	function port(): number {
-		if (!handle) throw new Error("server not started");
-		return handle.port;
-	}
+	const env = setupGenerateRoutesTest();
 
 	it("queues a job against the repo root of a past run", async () => {
-		const res = await request(port(), "POST", "/api/generate", {
+		const res = await requestJson(env.port(), "POST", "/api/generate", {
 			prUrl: "https://github.com/acme/widgets/pull/7",
 		});
 		expect(res.status).toBe(202);
-		await jobs.settled();
-		expect(requested).toMatchObject([
+		await env.jobs.settled();
+		expect(env.requested).toMatchObject([
 			{
 				prUrl: "https://github.com/acme/widgets/pull/7",
-				repoRoot: knownRepoRoot,
+				repoRoot: env.knownRepoRoot,
 				model: "sonnet",
 			},
 		]);
-		expect(requested).toHaveLength(1);
+		expect(env.requested).toHaveLength(1);
 	});
 
 	it("reports job status once finished", async () => {
-		const res = await request(port(), "POST", "/api/generate", {
+		const res = await requestJson(env.port(), "POST", "/api/generate", {
 			prUrl: "https://github.com/acme/widgets/pull/7",
 		});
-		await jobs.settled();
+		await env.jobs.settled();
 		const jobId = expectJobId(res.body);
-		const status = await request(port(), "GET", `/api/generate/${jobId}`);
+		const status = await requestJson(env.port(), "GET", `/api/generate/${jobId}`);
 		expect(status.status).toBe(200);
 		expect(status.body).toEqual({
 			id: jobId,
@@ -147,119 +42,52 @@ describe("generate routes", () => {
 	});
 
 	it("accepts a PR resolved through the clone index alone, with no prior run", async () => {
-		const rootsDir = path.join(tmpDir, "roots");
+		const rootsDir = path.join(env.tmpDir, "roots");
 		const gadgetsRoot = path.join(rootsDir, "gadgets");
-		await makeClone(gadgetsRoot, "git@github.com:acme/gadgets.git");
-		addCloneRoot(db, rootsDir);
-		registry.rescan();
-		const res = await request(port(), "POST", "/api/generate", {
+		await writeCloneConfig(gadgetsRoot, "git@github.com:acme/gadgets.git");
+		addCloneRoot(env.db, rootsDir);
+		env.registry.rescan();
+		const res = await requestJson(env.port(), "POST", "/api/generate", {
 			prUrl: "https://github.com/acme/gadgets/pull/3",
 		});
 		expect(res.status).toBe(202);
-		await jobs.settled();
-		expect(requested).toMatchObject([{ repoRoot: gadgetsRoot }]);
+		await env.jobs.settled();
+		expect(env.requested).toMatchObject([{ repoRoot: gadgetsRoot }]);
 	});
 
 	it("rejects repos with no known local clone", async () => {
-		const res = await request(port(), "POST", "/api/generate", {
+		const res = await requestJson(env.port(), "POST", "/api/generate", {
 			prUrl: "https://github.com/other/thing/pull/1",
 		});
 		expect(res.status).toBe(422);
-		expect(requested).toEqual([]);
+		expect(env.requested).toEqual([]);
 	});
 
 	it("400s a URL that is not a github.com PR", async () => {
-		const res = await request(port(), "POST", "/api/generate", {
+		const res = await requestJson(env.port(), "POST", "/api/generate", {
 			prUrl: "https://gitlab.com/acme/widgets/-/merge_requests/7",
 		});
 		expect(res.status).toBe(400);
-		expect(requested).toEqual([]);
+		expect(env.requested).toEqual([]);
 	});
 
 	it("400s a body missing prUrl", async () => {
-		const res = await request(port(), "POST", "/api/generate", { model: "opus" });
+		const res = await requestJson(env.port(), "POST", "/api/generate", { model: "opus" });
 		expect(res.status).toBe(400);
-		expect(requested).toEqual([]);
-	});
-
-	it("falls back to the server's default model when the body omits one", async () => {
-		if (!handle) throw new Error("server not started");
-		await handle.close();
-		handle = await startServer({ routes: generateRoutes(jobs, registry, "opus") });
-		const res = await request(port(), "POST", "/api/generate", {
-			prUrl: "https://github.com/acme/widgets/pull/7",
-		});
-		expect(res.status).toBe(202);
-		await jobs.settled();
-		expect(requested).toMatchObject([{ model: "opus" }]);
-	});
-
-	it("lets a request body override the server's default model", async () => {
-		if (!handle) throw new Error("server not started");
-		await handle.close();
-		handle = await startServer({ routes: generateRoutes(jobs, registry, "opus") });
-		const res = await request(port(), "POST", "/api/generate", {
-			prUrl: "https://github.com/acme/widgets/pull/7",
-			model: "haiku",
-		});
-		expect(res.status).toBe(202);
-		await jobs.settled();
-		expect(requested).toMatchObject([{ model: "haiku" }]);
+		expect(env.requested).toEqual([]);
 	});
 
 	it("400s an unknown model", async () => {
-		const res = await request(port(), "POST", "/api/generate", {
+		const res = await requestJson(env.port(), "POST", "/api/generate", {
 			prUrl: "https://github.com/acme/widgets/pull/7",
 			model: "gpt",
 		});
 		expect(res.status).toBe(400);
-		expect(requested).toEqual([]);
-	});
-
-	it("reuses the in-flight job for the same PR however the URL is spelled", async () => {
-		blockRunner();
-		const first = await request(port(), "POST", "/api/generate", {
-			prUrl: "https://github.com/acme/widgets/pull/7",
-		});
-		const mixedCase = await request(port(), "POST", "/api/generate", {
-			prUrl: "https://github.com/Acme/Widgets/pull/7",
-		});
-		const decorated = await request(port(), "POST", "/api/generate", {
-			prUrl: "https://github.com/acme/widgets/pull/7/files?diff=split#discussion_r1",
-		});
-		expect(mixedCase.status).toBe(202);
-		expect(expectJobId(mixedCase.body)).toBe(expectJobId(first.body));
-		expect(expectJobId(decorated.body)).toBe(expectJobId(first.body));
-		releaseRunner();
-		await jobs.settled();
-		expect(requested).toHaveLength(1);
-		// The runner always sees the canonical URL, never the decorated one.
-		expect(requested[0]?.prUrl).toBe("https://github.com/acme/widgets/pull/7");
-	});
-
-	it("starts a fresh job once the previous one for that PR finished", async () => {
-		const first = await request(port(), "POST", "/api/generate", {
-			prUrl: "https://github.com/acme/widgets/pull/7",
-		});
-		await jobs.settled();
-		const second = await request(port(), "POST", "/api/generate", {
-			prUrl: "https://github.com/acme/widgets/pull/7",
-		});
-		await jobs.settled();
-		expect(expectJobId(second.body)).not.toBe(expectJobId(first.body));
-		expect(requested).toHaveLength(2);
+		expect(env.requested).toEqual([]);
 	});
 
 	it("404s an unknown job", async () => {
-		const res = await request(port(), "GET", "/api/generate/does-not-exist");
+		const res = await requestJson(env.port(), "GET", "/api/generate/does-not-exist");
 		expect(res.status).toBe(404);
 	});
 });
-
-function expectJobId(body: unknown): string {
-	if (typeof body === "object" && body !== null && "jobId" in body) {
-		const { jobId } = body;
-		if (typeof jobId === "string") return jobId;
-	}
-	throw new Error(`Expected a jobId in ${JSON.stringify(body)}`);
-}

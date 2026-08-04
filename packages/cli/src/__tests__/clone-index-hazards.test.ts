@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CloneIndex } from "../clones/clone-index.js";
+import { writeCloneConfig } from "./fixtures.js";
 
 let root = "";
 
@@ -16,11 +17,7 @@ afterEach(async () => {
 /** A fake clone: a directory holding .git/config with the given origin url. */
 async function makeRepo(rel: string, originUrl: string): Promise<string> {
 	const dir = path.join(root, rel);
-	await fs.mkdir(path.join(dir, ".git"), { recursive: true });
-	await fs.writeFile(
-		path.join(dir, ".git", "config"),
-		`[core]\n\tbare = false\n[remote "origin"]\n\turl = ${originUrl}\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n`,
-	);
+	await writeCloneConfig(dir, originUrl);
 	return dir;
 }
 

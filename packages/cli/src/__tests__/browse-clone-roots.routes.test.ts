@@ -9,6 +9,7 @@ import { browseRoutes } from "../routes/browse.js";
 import { cloneRootRoutes } from "../routes/clone-roots.js";
 import { SCOPE_KIND } from "../schema.js";
 import { type ServerHandle, startServer } from "../server.js";
+import { writeCloneConfig } from "./fixtures.js";
 import { requestJson } from "./runs-route-harness.js";
 
 const SHA = "a".repeat(40);
@@ -33,11 +34,7 @@ describe("browse and clone-roots routes", () => {
 
 	/** Registers a fake local clone by seeding a chapter_run with a GitHub origin. */
 	async function makeClone(originUrl: string, repoRoot: string): Promise<void> {
-		await fs.mkdir(path.join(repoRoot, ".git"), { recursive: true });
-		await fs.writeFile(
-			path.join(repoRoot, ".git", "config"),
-			`[remote "origin"]\n\turl = ${originUrl}\n`,
-		);
+		await writeCloneConfig(repoRoot, originUrl);
 		db.insert(chapterRun)
 			.values({
 				repoRoot,

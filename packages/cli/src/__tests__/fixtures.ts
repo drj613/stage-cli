@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import type { RepoContext } from "../git.js";
 import type { ChaptersFile } from "../schema.js";
 
@@ -9,6 +11,19 @@ const SHA = {
 
 export function makeRepoContext(over: Partial<RepoContext> = {}): RepoContext {
 	return { root: "/repo", originUrl: null, ...over };
+}
+
+/**
+ * Writes a fake `.git/config` under `dir` naming `originUrl` as the `origin`
+ * remote — enough for `CloneIndex.scan` (and anything else that reads
+ * `.git/config` directly) to recognize `dir` as a clone of that repo.
+ */
+export async function writeCloneConfig(dir: string, originUrl: string): Promise<void> {
+	await fs.mkdir(path.join(dir, ".git"), { recursive: true });
+	await fs.writeFile(
+		path.join(dir, ".git", "config"),
+		`[core]\n\tbare = false\n[remote "origin"]\n\turl = ${originUrl}\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n`,
+	);
 }
 
 export function makeFixture(over: Partial<ChaptersFile> = {}): ChaptersFile {

@@ -7,6 +7,7 @@ import { addCloneRoot } from "../clones/clone-root-store.js";
 import { closeDb, getDb, type StageDb } from "../db/client.js";
 import { chapterRun } from "../db/schema/index.js";
 import { SCOPE_KIND } from "../schema.js";
+import { writeCloneConfig } from "./fixtures.js";
 
 let tmpDir = "";
 let db: StageDb;
@@ -23,8 +24,7 @@ afterEach(async () => {
 
 async function makeClone(rel: string, originUrl: string): Promise<string> {
 	const dir = path.join(tmpDir, rel);
-	await fs.mkdir(path.join(dir, ".git"), { recursive: true });
-	await fs.writeFile(path.join(dir, ".git", "config"), `[remote "origin"]\n\turl = ${originUrl}\n`);
+	await writeCloneConfig(dir, originUrl);
 	return dir;
 }
 
