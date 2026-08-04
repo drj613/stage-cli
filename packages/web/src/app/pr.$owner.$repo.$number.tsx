@@ -2,12 +2,14 @@ import { PR_RESOLUTION } from "@stagereview/types/pull-requests";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Check, Copy, Loader2, RefreshCw } from "lucide-react";
+import type { ReactElement } from "react";
 import { useEffect, useState } from "react";
 import { ListNotice } from "@/components/dashboard/list-notice";
 import { Topbar } from "@/components/layout/topbar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { deriveResolverView } from "@/lib/resolver-view";
+import { assertUnreachable, deriveResolverView } from "@/lib/resolver-view";
+import { useCloneRoots } from "@/lib/use-clone-roots";
 import type { PrAddress, PrResolutionMachine } from "@/lib/use-pr-resolution";
 import { prResolutionQueryKey, usePrResolution } from "@/lib/use-pr-resolution";
 
@@ -57,7 +59,7 @@ function ResolverBody({
 	machine: PrResolutionMachine;
 	prLabel: string;
 	params: PrAddress;
-}) {
+}): ReactElement {
 	const { resolution, resolutionError, job, generate, generationError } = machine;
 	const view = deriveResolverView({ resolution, resolutionError, job, generationError });
 
@@ -79,6 +81,8 @@ function ResolverBody({
 			return <NoCloneCard nameWithOwner={view.nameWithOwner} params={params} />;
 		case "progress":
 			return <ProgressCard prLabel={prLabel} queuePosition={view.queuePosition} />;
+		default:
+			return assertUnreachable(view);
 	}
 }
 
@@ -131,6 +135,7 @@ function ProgressCard({
 
 function NoCloneCard({ nameWithOwner, params }: { nameWithOwner: string; params: PrAddress }) {
 	const queryClient = useQueryClient();
+	const cloneRoots = useCloneRoots();
 	const [copied, setCopied] = useState(false);
 	const [rescanning, setRescanning] = useState(false);
 	const cloneCommand = `git clone https://github.com/${nameWithOwner}.git`;
@@ -162,6 +167,18 @@ function NoCloneCard({ nameWithOwner, params }: { nameWithOwner: string; params:
 					{copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
 				</Button>
 			</div>
+			{cloneRoots.data && cloneRoots.data.roots.length > 0 && (
+				<div className="space-y-1">
+					<p className="text-muted-foreground text-xs">Searched:</p>
+					<ul className="space-y-0.5">
+						{cloneRoots.data.roots.map((root) => (
+							<li key={root.path} className="truncate font-mono text-muted-foreground text-xs">
+								{root.path}
+							</li>
+						))}
+					</ul>
+				</div>
+			)}
 			<Button variant="secondary" onClick={handleRescan} disabled={rescanning}>
 				<RefreshCw className={rescanning ? "size-3.5 animate-spin" : "size-3.5"} />
 				Rescan

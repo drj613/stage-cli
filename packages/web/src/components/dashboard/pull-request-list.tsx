@@ -79,6 +79,7 @@ function PullRequestRow({ pullRequest }: { pullRequest: DashboardPullRequest }) 
 					<span className="truncate font-medium text-sm">{pullRequest.title}</span>
 					{pullRequest.isDraft && <Badge variant="outline">Draft</Badge>}
 					{!pullRequest.cloned && <Badge variant="outline">Not cloned</Badge>}
+					{pullRequest.runId !== null && <Badge variant="outline">Chaptered</Badge>}
 				</div>
 				<p className="mt-1 truncate text-muted-foreground text-xs">
 					{pullRequest.repository} #{pullRequest.number} · {pullRequest.author ?? "unknown"} ·{" "}

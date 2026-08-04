@@ -72,3 +72,13 @@ export function deriveResolverView({
 	// ready (pre-navigate), needs-generation, or generating with no job data yet.
 	return { tag: "progress", queuePosition: null };
 }
+
+/**
+ * Compiler-enforced exhaustiveness check for a `switch` over `ResolverView`
+ * (or any other closed union). Adding a new `tag` without a matching `case`
+ * makes `value` fail to narrow to `never` here, so the switch stops
+ * compiling instead of silently falling through to a blank render.
+ */
+export function assertUnreachable(value: never): never {
+	throw new Error(`Unreachable resolver view: ${JSON.stringify(value)}`);
+}
