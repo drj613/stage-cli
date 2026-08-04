@@ -57,6 +57,13 @@
       "when": 1785453090999,
       "tag": "0007_ancient_ken_ellis",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1785877606671,
+      "tag": "0008_ancient_northstar",
+      "breakpoints": true
     }
   ]
 }
