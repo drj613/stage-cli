@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -9,7 +8,8 @@ import { chapterRun } from "../db/schema/index.js";
 import { JobManager } from "../generation/job-manager.js";
 import { pullRequestListRoutes } from "../routes/pull-requests.js";
 import { SCOPE_KIND } from "../schema.js";
-import { LOOPBACK_HOST, type ServerHandle, startServer } from "../server.js";
+import { type ServerHandle, startServer } from "../server.js";
+import { getJson as request } from "./runs-route-harness.js";
 
 const ORIGIN_URL = "git@github.com:acme/widgets.git";
 const NAME_WITH_OWNER = "acme/widgets";
@@ -17,29 +17,6 @@ const PR_NUMBER = 7;
 const HEAD_SHA = "a".repeat(40);
 const OTHER_SHA = "b".repeat(40);
 const PR_URL = `https://github.com/${NAME_WITH_OWNER}/pull/${PR_NUMBER}`;
-
-interface JsonResponse {
-	status: number;
-	body: unknown;
-}
-
-function request(port: number, requestPath: string): Promise<JsonResponse> {
-	return new Promise((resolve, reject) => {
-		const req = http.request(
-			{ hostname: LOOPBACK_HOST, port, method: "GET", path: requestPath, agent: false },
-			(res) => {
-				const chunks: Buffer[] = [];
-				res.on("data", (c: Buffer) => chunks.push(c));
-				res.on("end", () => {
-					const text = Buffer.concat(chunks).toString("utf8");
-					resolve({ status: res.statusCode ?? 0, body: text ? JSON.parse(text) : null });
-				});
-			},
-		);
-		req.on("error", reject);
-		req.end();
-	});
-}
 
 describe("pull-requests routes", () => {
 	let tmpDir = "";

@@ -12,12 +12,31 @@ export interface JsonResponse {
 	body: unknown;
 }
 
-// Fires a raw GET request at a running runs-routes server. Shared across every
-// runs test file — the request/response plumbing never varies per test.
-export function getJson(port: number, requestPath: string): Promise<JsonResponse> {
+/**
+ * Fires a raw HTTP request at a running routes server and parses the JSON
+ * response. Shared across every route test file — GET, or a mutation with a
+ * JSON body and/or custom headers (e.g. an `Origin`/`Host` override for a
+ * same-origin guard test) — so the request/response plumbing never varies
+ * per test.
+ */
+export function requestJson(
+	port: number,
+	method: string,
+	requestPath: string,
+	body?: unknown,
+	headers: Record<string, string> = {},
+): Promise<JsonResponse> {
 	return new Promise((resolve, reject) => {
+		const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
 		const req = http.request(
-			{ hostname: LOOPBACK_HOST, port, method: "GET", path: requestPath, agent: false },
+			{
+				hostname: LOOPBACK_HOST,
+				port,
+				method,
+				path: requestPath,
+				agent: false,
+				headers: payload ? { "Content-Type": "application/json", ...headers } : headers,
+			},
 			(res) => {
 				const chunks: Buffer[] = [];
 				res.on("data", (c: Buffer) => chunks.push(c));
@@ -28,8 +47,15 @@ export function getJson(port: number, requestPath: string): Promise<JsonResponse
 			},
 		);
 		req.on("error", reject);
+		if (payload) req.write(payload);
 		req.end();
 	});
+}
+
+// Fires a raw GET request at a running routes server. Kept as a thin wrapper
+// so the many GET-only call sites don't need the extra positional args.
+export function getJson(port: number, requestPath: string): Promise<JsonResponse> {
+	return requestJson(port, "GET", requestPath);
 }
 
 export interface RunRoutesTestEnv {
