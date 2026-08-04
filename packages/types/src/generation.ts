@@ -19,6 +19,8 @@ export const GenerationJobSchema = z.object({
 	/** Set once the job succeeds. */
 	runId: z.string().nullable(),
 	error: z.string().nullable(),
+	/** 1-based place in line while queued; null when running or terminal. */
+	queuePosition: z.number().nullable(),
 });
 export type GenerationJob = z.infer<typeof GenerationJobSchema>;
 

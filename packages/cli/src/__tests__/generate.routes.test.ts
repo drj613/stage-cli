@@ -126,7 +126,13 @@ describe("generate routes", () => {
 		const jobId = expectJobId(res.body);
 		const status = await request(port(), "GET", `/api/generate/${jobId}`);
 		expect(status.status).toBe(200);
-		expect(status.body).toEqual({ id: jobId, status: "succeeded", runId: "run-abc", error: null });
+		expect(status.body).toEqual({
+			id: jobId,
+			status: "succeeded",
+			runId: "run-abc",
+			error: null,
+			queuePosition: null,
+		});
 	});
 
 	it("rejects repos with no known local clone", async () => {

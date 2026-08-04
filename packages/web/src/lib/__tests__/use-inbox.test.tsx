@@ -27,7 +27,7 @@ const ACCEPTED: HttpResponse = { status: 202, body: { jobId: JOB_ID } };
 function polled(status: JobStatus, over: Partial<GenerationJob> = {}): HttpResponse {
 	return {
 		status: 200,
-		body: { id: JOB_ID, status, runId: null, error: null, ...over },
+		body: { id: JOB_ID, status, runId: null, error: null, queuePosition: null, ...over },
 	};
 }
 

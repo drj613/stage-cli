@@ -55,6 +55,62 @@ describe("JobManager", () => {
 	});
 });
 
+describe("JobManager queuePosition", () => {
+	it("reports 1-based queue position for queued jobs and null once running or terminal", async () => {
+		const releases: Array<() => void> = [];
+		const manager = new JobManager(
+			(job) =>
+				new Promise((resolve) => {
+					releases.push(() => resolve(`run-${job.prUrl}`));
+				}),
+		);
+		const first = manager.enqueue({
+			prUrl: "https://github.com/o/r/pull/1",
+			repoRoot: "/o",
+			model: "sonnet",
+		});
+		const second = manager.enqueue({
+			prUrl: "https://github.com/o/r/pull/2",
+			repoRoot: "/o",
+			model: "sonnet",
+		});
+		const third = manager.enqueue({
+			prUrl: "https://github.com/o/r/pull/3",
+			repoRoot: "/o",
+			model: "sonnet",
+		});
+
+		expect(manager.get(first)?.queuePosition).toBeNull(); // running — drain() shifted it off the queue
+		expect(manager.get(second)?.queuePosition).toBe(1);
+		expect(manager.get(third)?.queuePosition).toBe(2);
+
+		for (const release of releases.splice(0)) release();
+		await new Promise((r) => setTimeout(r, 0));
+		for (const release of releases.splice(0)) release();
+		await new Promise((r) => setTimeout(r, 0));
+		for (const release of releases.splice(0)) release();
+		await manager.settled();
+
+		expect(manager.get(second)?.queuePosition).toBeNull(); // terminal
+	});
+});
+
+describe("JobManager.latestJobFor", () => {
+	it("returns the most recent job for a PR regardless of status", async () => {
+		const PR_URL = "https://github.com/o/r/pull/42";
+		const manager = new JobManager(async () => {
+			throw new Error("boom");
+		});
+		const failedId = manager.enqueue({ prUrl: PR_URL, repoRoot: "/o", model: "sonnet" });
+		await manager.settled();
+
+		expect(manager.activeJobFor(PR_URL)).toBeNull(); // terminal jobs stay invisible here
+		expect(manager.latestJobFor(PR_URL)?.id).toBe(failedId);
+		expect(manager.latestJobFor(PR_URL)?.status).toBe("failed");
+		expect(manager.latestJobFor("https://github.com/o/r/pull/999")).toBeNull();
+	});
+});
+
 describe("JobManager.activeJobFor", () => {
 	it("finds a queued or running job for the same PR, ignoring URL case", async () => {
 		let release = () => {};

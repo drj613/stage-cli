@@ -42,6 +42,7 @@ export class JobManager {
 			status: JOB_STATUS.QUEUED,
 			runId: null,
 			error: null,
+			queuePosition: null,
 		};
 		this.jobs.set(job.id, job);
 		this.queue.push(job);
@@ -64,16 +65,41 @@ export class JobManager {
 		const wanted = prUrl.toLowerCase();
 		for (const job of this.jobs.values()) {
 			if (job.prUrl.toLowerCase() === wanted && !isTerminalJobStatus(job.status)) {
-				return { ...job };
+				return this.snapshot(job);
 			}
 		}
 		return null;
 	}
 
+	/**
+	 * The most recent job for this PR, any status — unlike activeJobFor, which
+	 * skips terminal jobs. The resolver uses this to report `failed` instead of
+	 * pretending generation was never attempted. Map preserves insertion order,
+	 * so the last match is the newest.
+	 */
+	latestJobFor(prUrl: string): Job | null {
+		const wanted = prUrl.toLowerCase();
+		let latest: Job | null = null;
+		for (const job of this.jobs.values()) {
+			if (job.prUrl.toLowerCase() === wanted) latest = job;
+		}
+		return latest ? this.snapshot(latest) : null;
+	}
+
 	/** A snapshot of the job — callers can't mutate the queue's state through it. */
 	get(id: string): Job | null {
 		const job = this.jobs.get(id);
-		return job ? { ...job } : null;
+		return job ? this.snapshot(job) : null;
+	}
+
+	/** 1-based place in line, or null when running or terminal. drain() shifts the running job off the queue, so indexOf is exact. */
+	private positionOf(job: Job): number | null {
+		const idx = this.queue.indexOf(job);
+		return idx >= 0 ? idx + 1 : null;
+	}
+
+	private snapshot(job: Job): Job {
+		return { ...job, queuePosition: this.positionOf(job) };
 	}
 
 	/** Resolves when the queue is empty. For tests and graceful shutdown. */

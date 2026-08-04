@@ -70,8 +70,8 @@ export function generateRoutes(
 					writeJson(res, 404, { error: "Job not found" });
 					return;
 				}
-				const { id, status, runId, error } = job;
-				writeJson(res, 200, { id, status, runId, error } satisfies GenerationJob);
+				const { id, status, runId, error, queuePosition } = job;
+				writeJson(res, 200, { id, status, runId, error, queuePosition } satisfies GenerationJob);
 			},
 		},
 	];
