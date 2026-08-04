@@ -109,6 +109,18 @@ describe("JobManager.latestJobFor", () => {
 		expect(manager.latestJobFor(PR_URL)?.status).toBe("failed");
 		expect(manager.latestJobFor("https://github.com/o/r/pull/999")).toBeNull();
 	});
+
+	it("prefers the second job over the first when a PR was retried", async () => {
+		const PR_URL = "https://github.com/o/r/pull/42";
+		const manager = new JobManager(async () => "run-retry");
+		const first = manager.enqueue({ prUrl: PR_URL, repoRoot: "/o", model: "sonnet" });
+		await manager.settled();
+		const second = manager.enqueue({ prUrl: PR_URL, repoRoot: "/o", model: "sonnet" });
+		await manager.settled();
+
+		expect(first).not.toBe(second);
+		expect(manager.latestJobFor(PR_URL)?.id).toBe(second);
+	});
 });
 
 describe("JobManager.activeJobFor", () => {

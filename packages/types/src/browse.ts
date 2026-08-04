@@ -15,13 +15,13 @@ export const BrowseRepoSchema = z.object({
 });
 export type BrowseRepo = z.infer<typeof BrowseRepoSchema>;
 
-export const OwnerReposResponseSchema = z.union([
+export const OwnerReposResponseSchema = z.discriminatedUnion("available", [
 	z.object({ available: z.literal(false), reason: z.string() }),
 	z.object({ available: z.literal(true), repos: z.array(BrowseRepoSchema) }),
 ]);
 export type OwnerReposResponse = z.infer<typeof OwnerReposResponseSchema>;
 
-export const RepoPullsResponseSchema = z.union([
+export const RepoPullsResponseSchema = z.discriminatedUnion("available", [
 	z.object({ available: z.literal(false), reason: z.string() }),
 	z.object({ available: z.literal(true), pullRequests: z.array(DashboardPullRequestSchema) }),
 ]);

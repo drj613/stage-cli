@@ -22,7 +22,7 @@ export const DashboardPullRequestSchema = z.object({
 });
 export type DashboardPullRequest = z.infer<typeof DashboardPullRequestSchema>;
 
-export const PullRequestListResponseSchema = z.union([
+export const PullRequestListResponseSchema = z.discriminatedUnion("available", [
 	z.object({ available: z.literal(false), reason: z.string() }),
 	z.object({ available: z.literal(true), pullRequests: z.array(DashboardPullRequestSchema) }),
 ]);
