@@ -3,6 +3,12 @@ import type { StageDb } from "../db/client.js";
 import { chapterRun } from "../db/schema/index.js";
 import { parseGitHubRepo, toNameWithOwner } from "../github/repo.js";
 
+export interface PrRun {
+	runId: string;
+	/** The commit the run was generated against — compared to the live head to detect staleness. */
+	headSha: string;
+}
+
 /**
  * What past chapter runs tell us about a GitHub repo, indexed by its
  * `owner/name` slug: where it is checked out locally, and the newest run per PR.
@@ -13,7 +19,7 @@ import { parseGitHubRepo, toNameWithOwner } from "../github/repo.js";
  */
 export class RunIndex {
 	private readonly repoRoots = new Map<string, string>();
-	private readonly runIds = new Map<string, Map<number, string>>();
+	private readonly runIds = new Map<string, Map<number, PrRun>>();
 
 	constructor(db: StageDb) {
 		const runs = db
@@ -22,6 +28,7 @@ export class RunIndex {
 				repoRoot: chapterRun.repoRoot,
 				originUrl: chapterRun.originUrl,
 				prNumber: chapterRun.prNumber,
+				headSha: chapterRun.headSha,
 			})
 			.from(chapterRun)
 			.orderBy(desc(chapterRun.generatedAt))
@@ -38,13 +45,20 @@ export class RunIndex {
 				byPrNumber = new Map();
 				this.runIds.set(nameWithOwner, byPrNumber);
 			}
-			if (!byPrNumber.has(run.prNumber)) byPrNumber.set(run.prNumber, run.id);
+			if (!byPrNumber.has(run.prNumber)) {
+				byPrNumber.set(run.prNumber, { runId: run.id, headSha: run.headSha });
+			}
 		}
+	}
+
+	/** Newest run for a PR with the head it was generated at, or null. */
+	latestRunFor(nameWithOwner: string, prNumber: number): PrRun | null {
+		return this.runIds.get(nameWithOwner.toLowerCase())?.get(prNumber) ?? null;
 	}
 
 	/** Newest run for a PR, or null if Stage has never generated chapters for it. */
 	runIdFor(nameWithOwner: string, prNumber: number): string | null {
-		return this.runIds.get(nameWithOwner.toLowerCase())?.get(prNumber) ?? null;
+		return this.latestRunFor(nameWithOwner, prNumber)?.runId ?? null;
 	}
 
 	/** A local clone of the repo Stage has generated from before, or null. */
