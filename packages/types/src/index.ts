@@ -5,7 +5,6 @@ export * from "./comments.ts";
 export * from "./diff.ts";
 export * from "./generation.ts";
 export * from "./github-threads.ts";
-export * from "./inbox.ts";
 export * from "./parsed-diff.ts";
 export * from "./prologue.ts";
 export * from "./pull-request.ts";

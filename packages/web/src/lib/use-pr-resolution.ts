@@ -1,0 +1,152 @@
+import {
+	GenerateAcceptedSchema,
+	type GenerationJob,
+	GenerationJobSchema,
+	isTerminalJobStatus,
+	JOB_STATUS,
+} from "@stagereview/types/generation";
+import {
+	PR_RESOLUTION,
+	type PrResolution,
+	PrResolutionSchema,
+} from "@stagereview/types/pull-requests";
+import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { z } from "zod";
+import { PULL_REQUESTS_QUERY_ROOT } from "./use-pull-requests";
+import { RUNS_QUERY_KEY } from "./use-runs";
+import { jsonFetch } from "./use-view-state";
+
+const JOB_POLL_INTERVAL_MS = 3_000;
+const ErrorBodySchema = z.object({ error: z.string() });
+
+export interface PrAddress {
+	owner: string;
+	repo: string;
+	number: string;
+}
+
+/**
+ * Starts a headless generation job. Rejects with the server's own message so
+ * "no local clone for this repo" (422) reaches the user verbatim.
+ */
+async function startGeneration(prUrl: string): Promise<string> {
+	const res = await fetch("/api/generate", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ prUrl }),
+	});
+	const raw: unknown = await res.json();
+	if (!res.ok) {
+		const parsed = ErrorBodySchema.safeParse(raw);
+		throw new Error(
+			parsed.success ? parsed.data.error : `POST /api/generate failed: ${res.status}`,
+		);
+	}
+	return GenerateAcceptedSchema.parse(raw).jobId;
+}
+
+export interface PrResolutionMachine {
+	/** Server-reported resolution; undefined while loading. */
+	resolution: PrResolution | undefined;
+	resolutionError: unknown;
+	/** Live job snapshot while generating (either auto-started or adopted). */
+	job: GenerationJob | null;
+	/** RunId to navigate to: from a ready resolution or a succeeded job. */
+	runId: string | null;
+	/** Explicit user action — Regenerate on stale, Retry on failed. */
+	generate: () => void;
+	generationError: string | null;
+}
+
+/**
+ * The resolver state machine (see design doc "Resolver page"). The GET is
+ * side-effect free; generating on view is client behavior, and only the
+ * needs-generation state auto-POSTs — failed and stale wait for a click, so
+ * a refresh never spends an agent session. Double-mount and multi-tab races
+ * are safe because the server's activeJobFor dedupes on the canonical PR URL.
+ *
+ * The component calling this hook MUST be keyed by the normalized PR address
+ * (see the resolver page). startedJobId and autoStarted are per-PR state; an
+ * in-place route-param change (PR A → PR B) would otherwise leave B polling
+ * A's job, suppress B's auto-generation, and let A's still-pending mutation
+ * install its jobId after navigation. Remounting on key change resets all of
+ * it and orphans the stale mutation callback.
+ */
+export function usePrResolution(address: PrAddress): PrResolutionMachine {
+	const queryClient = useQueryClient();
+	const prUrl = `https://github.com/${address.owner}/${address.repo}/pull/${address.number}`;
+	const resolutionPath = `/api/pull-requests/${address.owner}/${address.repo}/${address.number}`;
+
+	const resolutionQuery = useQuery<PrResolution>({
+		queryKey: [
+			"pr-resolution",
+			address.owner.toLowerCase(),
+			address.repo.toLowerCase(),
+			address.number,
+		],
+		queryFn: async () => PrResolutionSchema.parse(await jsonFetch<unknown>(resolutionPath)),
+	});
+	const resolution = resolutionQuery.data;
+
+	const [startedJobId, setStartedJobId] = useState<string | null>(null);
+	const { mutate, error: startError } = useMutation({
+		mutationFn: () => startGeneration(prUrl),
+		onSuccess: setStartedJobId,
+	});
+
+	const autoStarted = useRef(false);
+	// Gate on isFetchedAfterMount: a cached needs-generation served synchronously
+	// on remount may be stale (the last attempt may have failed or succeeded
+	// since), and POSTing from it would spend a second agent session. Only a
+	// resolution the server confirmed after this mount may auto-start.
+	const needsGeneration =
+		resolution?.state === PR_RESOLUTION.NEEDS_GENERATION && resolutionQuery.isFetchedAfterMount;
+	useEffect(() => {
+		if (!needsGeneration || autoStarted.current) return;
+		autoStarted.current = true;
+		mutate();
+	}, [needsGeneration, mutate]);
+
+	const jobId =
+		startedJobId ?? (resolution?.state === PR_RESOLUTION.GENERATING ? resolution.jobId : null);
+
+	const { data: job, error: pollError } = useQuery<GenerationJob>({
+		queryKey: ["generation-job", jobId],
+		queryFn:
+			jobId === null
+				? skipToken
+				: async () =>
+						GenerationJobSchema.parse(
+							await jsonFetch<unknown>(`/api/generate/${encodeURIComponent(jobId)}`),
+						),
+		retry: false,
+		refetchInterval: (query) => {
+			if (query.state.status === "error") return false;
+			const data = query.state.data;
+			return data && isTerminalJobStatus(data.status) ? false : JOB_POLL_INTERVAL_MS;
+		},
+	});
+
+	const succeeded = job?.status === JOB_STATUS.SUCCEEDED;
+	useEffect(() => {
+		if (!succeeded) return;
+		void queryClient.invalidateQueries({ queryKey: RUNS_QUERY_KEY });
+		void queryClient.invalidateQueries({ queryKey: [PULL_REQUESTS_QUERY_ROOT] });
+	}, [succeeded, queryClient]);
+
+	const resolvedRunId = resolution?.state === PR_RESOLUTION.READY ? resolution.runId : null;
+
+	return {
+		resolution,
+		resolutionError: resolutionQuery.error,
+		job: job ?? null,
+		runId: job?.runId ?? resolvedRunId,
+		generate: () => mutate(),
+		generationError:
+			(startError instanceof Error ? startError.message : null) ??
+			(pollError instanceof Error ? pollError.message : null) ??
+			job?.error ??
+			null,
+	};
+}

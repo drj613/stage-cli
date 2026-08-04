@@ -13,7 +13,6 @@
     "./diff": "./src/diff.ts",
     "./generation": "./src/generation.ts",
     "./github-threads": "./src/github-threads.ts",
-    "./inbox": "./src/inbox.ts",
     "./parsed-diff": "./src/parsed-diff.ts",
     "./prologue": "./src/prologue.ts",
     "./pull-request": "./src/pull-request.ts",
