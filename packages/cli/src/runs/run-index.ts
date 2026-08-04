@@ -13,7 +13,7 @@ export interface PrRun {
  * What past chapter runs tell us about a GitHub repo, indexed by its
  * `owner/name` slug: where it is checked out locally, and the newest run per PR.
  *
- * Both dashboard features need this same walk over `chapter_run` — the inbox to
+ * Both dashboard features need this same walk over `chapter_run` — the PR list to
  * link a PR to its latest review, generation to find a clone to run the agent in.
  * Rows are read newest-generated-first, so the first row seen per key wins.
  */

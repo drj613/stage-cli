@@ -46,8 +46,9 @@ packages/
       show.ts               # `stagereview show <path>` implementation
       start.ts              # `stagereview start` dashboard daemon
       import.ts             # `stagereview import` headless run insertion
+      clones/               # Clone-root store, filesystem scanner, and repo-root resolver
       generation/           # Sequential headless `claude -p` job manager
-      github/               # `gh` CLI wrappers (PR data, review-requested inbox)
+      github/               # `gh` CLI wrappers (PR search, browse, review data)
       server.ts             # Plain Node http server with regex-compiled routes
       routes/               # API route handlers (one file per resource)
       runs/                 # Chapter run import + processing
