@@ -5,7 +5,6 @@ import { commentRoutes } from "./comments.js";
 import { diffRoutes } from "./diff.js";
 import { generateRoutes } from "./generate.js";
 import { gitHubThreadRoutes } from "./github-threads.js";
-import { inboxRoutes } from "./inbox.js";
 import { pullRequestRoutes } from "./pull-request.js";
 import { pullRequestMutationRoutes } from "./pull-request-mutations.js";
 import { runRoutes } from "./runs.js";
@@ -29,7 +28,6 @@ export function coreRoutes(db: StageDb, defaultModel: GenerationModel): Route[] 
 		...pullRequestRoutes(db),
 		...pullRequestMutationRoutes(db),
 		...gitHubThreadRoutes(db),
-		...inboxRoutes(db),
 		...generateRoutes(db, jobs, defaultModel),
 	];
 }

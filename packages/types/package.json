@@ -15,6 +15,7 @@
     "./parsed-diff": "./src/parsed-diff.ts",
     "./prologue": "./src/prologue.ts",
     "./pull-request": "./src/pull-request.ts",
+    "./pull-requests": "./src/pull-requests.ts",
     "./run-summary": "./src/run-summary.ts",
     "./scope": "./src/scope.ts",
     "./view-state": "./src/view-state.ts",
