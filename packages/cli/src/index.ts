@@ -125,9 +125,10 @@ config
 	.description("Add a directory Stage scans for local git clones")
 	.argument("<path>", "Path to a directory containing clones")
 	.action((rootPath: string) => {
-		addCloneRoot(getDb(), path.resolve(rootPath));
+		const resolved = path.resolve(rootPath);
+		addCloneRoot(getDb(), resolved);
 		closeDb();
-		process.stdout.write(`Added ${path.resolve(rootPath)}\n`);
+		process.stdout.write(`Added ${resolved}\n`);
 	});
 
 config

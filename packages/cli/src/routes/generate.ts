@@ -45,7 +45,7 @@ export function generateRoutes(
 				const repoRoot = registry.resolveRepoRoot(nameWithOwner);
 				if (!repoRoot) {
 					writeJson(res, 422, {
-						error: `No local clone known for ${nameWithOwner}. Add a search root in Settings, or clone the repo first.`,
+						error: `No local clone known for ${nameWithOwner}. Run \`stagereview config add-root <path>\`, add a search root in the dashboard's Settings, or clone the repo first.`,
 					});
 					return;
 				}
