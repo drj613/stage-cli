@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CloneIndex } from "../clones/clone-index.js";
 
 let root = "";
@@ -76,6 +76,35 @@ describe("CloneIndex.scan hazards", () => {
 			expect(CloneIndex.scan([root]).pathFor("o/ok")).toBe(ok);
 		} finally {
 			await fs.chmod(locked, 0o755);
+		}
+	});
+
+	it("warns and returns an empty index when a configured root does not exist", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		try {
+			const missing = path.join(root, "does-not-exist");
+			const index = CloneIndex.scan([missing]);
+			expect(index.owners()).toEqual([]);
+			expect(warn).toHaveBeenCalledWith(expect.stringContaining(missing));
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it("does not warn about permission errors on directories nested below a root", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		try {
+			const locked = path.join(root, "locked");
+			await fs.mkdir(locked);
+			await fs.chmod(locked, 0o000);
+			try {
+				CloneIndex.scan([root]);
+			} finally {
+				await fs.chmod(locked, 0o755);
+			}
+			expect(warn).not.toHaveBeenCalled();
+		} finally {
+			warn.mockRestore();
 		}
 	});
 });

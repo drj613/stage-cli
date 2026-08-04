@@ -36,16 +36,18 @@ export class CloneIndex {
 			const entry = queue[head];
 			if (entry === undefined) continue; // noUncheckedIndexedAccess; unreachable by construction
 			const { dir, depth } = entry;
+			const isRoot = depth === 0;
 			let real: string;
 			try {
 				real = fs.realpathSync(dir);
-			} catch {
+			} catch (error) {
+				if (isRoot) warnUnscannableRoot(dir, error);
 				continue; // broken symlink or vanished directory
 			}
 			if (visited.has(real)) continue; // symlink loop
 			visited.add(real);
 
-			const probe = probeRepo(dir);
+			const probe = probeRepo(dir, isRoot);
 			if (probe.isRepo) {
 				// A repo — GitHub or not, origin readable or not — never descend
 				// into it. Repo-ness comes from the presence of a `.git` entry,
@@ -64,7 +66,8 @@ export class CloneIndex {
 			let entries: fs.Dirent[];
 			try {
 				entries = fs.readdirSync(dir, { withFileTypes: true });
-			} catch {
+			} catch (error) {
+				if (isRoot) warnUnscannableRoot(dir, error);
 				continue; // unreadable directory — skip, don't abort the scan
 			}
 			for (const entry of entries) {
@@ -110,8 +113,12 @@ type RepoProbe = { isRepo: false } | { isRepo: true; originUrl: string | null };
  * then that directory's `commondir` file — the real config lives beside the
  * common dir, not in `.git/worktrees/<name>`. Bare clones have no `.git`
  * entry, so they never match here.
+ *
+ * `isRoot` marks a directory the user explicitly configured as a scan root —
+ * a read failure there is warned about (see `warnUnscannableRoot`), while the
+ * same failure on a directory discovered deeper in the tree stays silent.
  */
-function probeRepo(dir: string): RepoProbe {
+function probeRepo(dir: string, isRoot: boolean): RepoProbe {
 	const gitEntry = path.join(dir, ".git");
 	let stat: fs.Stats;
 	try {
@@ -123,20 +130,21 @@ function probeRepo(dir: string): RepoProbe {
 	if (stat.isDirectory()) {
 		configPath = path.join(gitEntry, "config");
 	} else {
-		const commonDir = resolveWorktreeCommonDir(dir, gitEntry);
+		const commonDir = resolveWorktreeCommonDir(dir, gitEntry, isRoot);
 		configPath = commonDir === null ? null : path.join(commonDir, "config");
 	}
 	if (configPath === null) return { isRepo: true, originUrl: null };
 	let config: string;
 	try {
 		config = fs.readFileSync(configPath, "utf8");
-	} catch {
+	} catch (error) {
+		if (isRoot) warnUnscannableRoot(dir, error);
 		return { isRepo: true, originUrl: null };
 	}
 	return { isRepo: true, originUrl: parseOriginUrl(config) };
 }
 
-function resolveWorktreeCommonDir(dir: string, gitFile: string): string | null {
+function resolveWorktreeCommonDir(dir: string, gitFile: string, isRoot: boolean): string | null {
 	try {
 		const pointer = fs.readFileSync(gitFile, "utf8").trim();
 		const match = pointer.match(/^gitdir:\s*(.+)$/);
@@ -144,22 +152,39 @@ function resolveWorktreeCommonDir(dir: string, gitFile: string): string | null {
 		const gitDir = path.resolve(dir, match[1]);
 		const commonDir = fs.readFileSync(path.join(gitDir, "commondir"), "utf8").trim();
 		return path.resolve(gitDir, commonDir);
-	} catch {
+	} catch (error) {
+		if (isRoot) warnUnscannableRoot(dir, error);
 		return null;
 	}
 }
 
 /**
- * A literal `url =` inside `[remote "origin"]`, quoted or bare. Deliberately
- * capped: urls arriving via include.path / includeIf are skipped rather than
- * half-understood (see design doc — a full INI parser isn't worth the dep).
+ * A user-configured clone root that couldn't be scanned (missing, unmounted,
+ * or unreadable). Failures on directories discovered deeper in the tree are
+ * expected — permission bits vary across a large clone — so only the root
+ * itself, which the user explicitly chose, is worth surfacing.
+ */
+function warnUnscannableRoot(dir: string, error: unknown): void {
+	const message = error instanceof Error ? error.message : String(error);
+	console.warn(`Clone root is not scannable: ${dir} — ${message}`);
+}
+
+/**
+ * A literal `url =` inside `[remote "origin"]`, quoted or bare — an inline
+ * comment after the value is not stripped, so a config using one resolves to
+ * a null origin. Deliberately capped: urls arriving via include.path /
+ * includeIf are skipped rather than half-understood (see design doc — a full
+ * INI parser isn't worth the dep).
  */
 export function parseOriginUrl(config: string): string | null {
 	let inOrigin = false;
 	for (const raw of config.split("\n")) {
 		const line = raw.trim();
 		if (line.startsWith("[")) {
-			inOrigin = /^\[remote\s+"origin"\]$/i.test(line);
+			const section = line.match(/^\[remote\s+"([^"]*)"\]$/i);
+			// The `remote` keyword is case-insensitive; git subsection names
+			// ("origin" vs "Origin") are not, so compare that literally.
+			inOrigin = section?.[1] === "origin";
 			continue;
 		}
 		if (!inOrigin) continue;

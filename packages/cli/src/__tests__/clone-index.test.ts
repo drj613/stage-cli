@@ -81,4 +81,32 @@ describe("CloneIndex.scan", () => {
 		await fs.writeFile(path.join(dir, ".git", "config"), `[include]\n\tpath = ../extra\n`);
 		expect(CloneIndex.scan([root]).owners()).toEqual([]);
 	});
+
+	it("indexes repos found under multiple roots", async () => {
+		const otherRoot = await fs.mkdtemp(path.join(os.tmpdir(), "stage-clone-index-"));
+		try {
+			const one = await makeRepo("one", "https://github.com/o/one");
+			const dir = path.join(otherRoot, "two");
+			await fs.mkdir(path.join(dir, ".git"), { recursive: true });
+			await fs.writeFile(
+				path.join(dir, ".git", "config"),
+				`[remote "origin"]\n\turl = https://github.com/o/two\n`,
+			);
+			const index = CloneIndex.scan([root, otherRoot]);
+			expect(index.pathFor("o/one")).toBe(one);
+			expect(index.pathFor("o/two")).toBe(dir);
+		} finally {
+			await fs.rm(otherRoot, { recursive: true, force: true });
+		}
+	});
+
+	it("treats a subsection name matching only case-insensitively as a different remote", async () => {
+		const dir = path.join(root, "other-remote");
+		await fs.mkdir(path.join(dir, ".git"), { recursive: true });
+		await fs.writeFile(
+			path.join(dir, ".git", "config"),
+			`[remote "Origin"]\n\turl = https://github.com/o/wrong-case\n`,
+		);
+		expect(CloneIndex.scan([root]).owners()).toEqual([]);
+	});
 });
