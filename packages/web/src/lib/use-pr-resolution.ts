@@ -26,6 +26,10 @@ export interface PrAddress {
 	number: string;
 }
 
+export function prResolutionQueryKey(address: PrAddress): readonly unknown[] {
+	return ["pr-resolution", address.owner.toLowerCase(), address.repo.toLowerCase(), address.number];
+}
+
 /**
  * Starts a headless generation job. Rejects with the server's own message so
  * "no local clone for this repo" (422) reaches the user verbatim.
@@ -79,12 +83,7 @@ export function usePrResolution(address: PrAddress): PrResolutionMachine {
 	const resolutionPath = `/api/pull-requests/${address.owner}/${address.repo}/${address.number}`;
 
 	const resolutionQuery = useQuery<PrResolution>({
-		queryKey: [
-			"pr-resolution",
-			address.owner.toLowerCase(),
-			address.repo.toLowerCase(),
-			address.number,
-		],
+		queryKey: prResolutionQueryKey(address),
 		queryFn: async () => PrResolutionSchema.parse(await jsonFetch<unknown>(resolutionPath)),
 	});
 	const resolution = resolutionQuery.data;
@@ -143,10 +142,6 @@ export function usePrResolution(address: PrAddress): PrResolutionMachine {
 		job: job ?? null,
 		runId: job?.runId ?? resolvedRunId,
 		generate: () => mutate(),
-		generationError:
-			(startError instanceof Error ? startError.message : null) ??
-			(pollError instanceof Error ? pollError.message : null) ??
-			job?.error ??
-			null,
+		generationError: startError?.message ?? pollError?.message ?? job?.error ?? null,
 	};
 }
