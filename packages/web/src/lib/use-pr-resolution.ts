@@ -127,6 +127,17 @@ export function usePrResolution(address: PrAddress): PrResolutionMachine {
 		},
 	});
 
+	// The resolution query's cached state predates whichever job just finished
+	// (it was "generating" or "failed" when the job started). Invalidate on
+	// every terminal outcome — not just success — so the server's view (which
+	// already knows about the failed job via latestJobFor) replaces the
+	// client's stale one instead of drifting from it.
+	const terminal = job !== undefined && isTerminalJobStatus(job.status);
+	useEffect(() => {
+		if (!terminal) return;
+		void queryClient.invalidateQueries({ queryKey: prResolutionQueryKey(address) });
+	}, [terminal, queryClient, address]);
+
 	const succeeded = job?.status === JOB_STATUS.SUCCEEDED;
 	useEffect(() => {
 		if (!succeeded) return;

@@ -1,5 +1,4 @@
-import { JOB_STATUS } from "@stagereview/types/generation";
-import { PR_RESOLUTION, type PrResolution } from "@stagereview/types/pull-requests";
+import { PR_RESOLUTION } from "@stagereview/types/pull-requests";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Check, Copy, Loader2, RefreshCw } from "lucide-react";
@@ -8,6 +7,7 @@ import { ListNotice } from "@/components/dashboard/list-notice";
 import { Topbar } from "@/components/layout/topbar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { deriveResolverView } from "@/lib/resolver-view";
 import type { PrAddress, PrResolutionMachine } from "@/lib/use-pr-resolution";
 import { prResolutionQueryKey, usePrResolution } from "@/lib/use-pr-resolution";
 
@@ -59,70 +59,37 @@ function ResolverBody({
 	params: PrAddress;
 }) {
 	const { resolution, resolutionError, job, generate, generationError } = machine;
+	const view = deriveResolverView({ resolution, resolutionError, job, generationError });
 
-	if (resolution === undefined && !resolutionError) {
-		return (
-			<div className="space-y-3">
-				<Skeleton className="h-16 w-full" />
-				<Skeleton className="h-16 w-full" />
-			</div>
-		);
+	switch (view.tag) {
+		case "loading":
+			return (
+				<div className="space-y-3">
+					<Skeleton className="h-16 w-full" />
+					<Skeleton className="h-16 w-full" />
+				</div>
+			);
+		case "error":
+			return <ListNotice title="Couldn't load this pull request." details={view.message} />;
+		case "failed":
+			return <FailedCard error={view.error} onRetry={generate} />;
+		case "stale":
+			return <StaleCard runId={view.runId} onRegenerate={generate} />;
+		case "no-clone":
+			return <NoCloneCard nameWithOwner={view.nameWithOwner} params={params} />;
+		case "progress":
+			return <ProgressCard prLabel={prLabel} queuePosition={view.queuePosition} />;
 	}
-
-	if (resolutionError) {
-		return (
-			<ListNotice
-				title="Couldn't load this pull request."
-				details={
-					resolutionError instanceof Error
-						? resolutionError.message
-						: "The Stage server didn't respond."
-				}
-			/>
-		);
-	}
-
-	if (resolution === undefined) {
-		// Unreachable once the loading and error branches above are exhausted —
-		// narrows the type for the switch below.
-		return null;
-	}
-
-	// Checked before the stale card so a failed Regenerate (or a failed retry
-	// that hasn't refreshed the resolution yet) doesn't get masked by it. Both
-	// disjuncts are gated on job === null so a live Retry (or Regenerate) job
-	// falls through to the progress card instead of leaving the failed card
-	// stuck until the job terminates.
-	if (job === null && (resolution.state === PR_RESOLUTION.FAILED || generationError !== null)) {
-		return <FailedCard error={generationError ?? ""} onRetry={generate} />;
-	}
-
-	if (resolution.state === PR_RESOLUTION.STALE && job === null) {
-		return <StaleCard resolution={resolution} onRegenerate={generate} />;
-	}
-
-	if (resolution.state === PR_RESOLUTION.NO_CLONE) {
-		return <NoCloneCard nameWithOwner={resolution.nameWithOwner} params={params} />;
-	}
-
-	// needs-generation, generating, stale-after-Regenerate, or a live job.
-	return <ProgressCard prLabel={prLabel} job={job} />;
 }
 
-function StaleCard({
-	resolution,
-	onRegenerate,
-}: {
-	resolution: Extract<PrResolution, { state: "stale" }>;
-	onRegenerate: () => void;
-}) {
+function StaleCard({ runId, onRegenerate }: { runId: string; onRegenerate: () => void }) {
 	return (
 		<div className="space-y-3 rounded-lg border p-4">
 			<p className="text-sm">This pull request has new commits since the review was written.</p>
 			<div className="flex gap-2">
 				<Button onClick={onRegenerate}>Regenerate</Button>
 				<Button variant="secondary" asChild>
-					<Link to="/runs/$runId" params={{ runId: resolution.runId }}>
+					<Link to="/runs/$runId" params={{ runId }}>
 						Open the existing review
 					</Link>
 				</Button>
@@ -143,11 +110,14 @@ function FailedCard({ error, onRetry }: { error: string; onRetry: () => void }) 
 	);
 }
 
-function ProgressCard({ prLabel, job }: { prLabel: string; job: PrResolutionMachine["job"] }) {
-	const body =
-		job?.status === JOB_STATUS.QUEUED && job.queuePosition !== null
-			? `Queued — ${job.queuePosition} ahead`
-			: "Chaptering…";
+function ProgressCard({
+	prLabel,
+	queuePosition,
+}: {
+	prLabel: string;
+	queuePosition: number | null;
+}) {
+	const body = queuePosition !== null ? `Queued — ${queuePosition} ahead` : "Chaptering…";
 	return (
 		<div className="flex items-center gap-3 rounded-lg border p-4">
 			<Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
