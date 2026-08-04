@@ -135,6 +135,9 @@ export function usePrResolution(address: PrAddress): PrResolutionMachine {
 	}, [succeeded, queryClient]);
 
 	const resolvedRunId = resolution?.state === PR_RESOLUTION.READY ? resolution.runId : null;
+	// A fresh attempt's own error always wins; only fall back to the server's
+	// last-reported failure when nothing from this mount has failed yet.
+	const resolvedFailureError = resolution?.state === PR_RESOLUTION.FAILED ? resolution.error : null;
 
 	return {
 		resolution,
@@ -142,6 +145,7 @@ export function usePrResolution(address: PrAddress): PrResolutionMachine {
 		job: job ?? null,
 		runId: job?.runId ?? resolvedRunId,
 		generate: () => mutate(),
-		generationError: startError?.message ?? pollError?.message ?? job?.error ?? null,
+		generationError:
+			startError?.message ?? pollError?.message ?? job?.error ?? resolvedFailureError,
 	};
 }

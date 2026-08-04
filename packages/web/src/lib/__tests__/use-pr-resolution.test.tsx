@@ -129,3 +129,18 @@ describe("usePrResolution — auto-generation gating", () => {
 		expect(postCalls).toHaveLength(0);
 	});
 });
+
+describe("usePrResolution — generationError", () => {
+	it("surfaces the server's own error on a fresh load of a failed resolution", async () => {
+		installFetch({
+			resolutions: [{ state: "failed", jobId: JOB_ID, error: "agent crashed" }],
+			postCalls: [],
+		});
+		const { result } = renderHook(() => usePrResolution(ADDRESS), {
+			wrapper: makeWrapper().Wrapper,
+		});
+
+		await waitFor(() => expect(result.current.resolution?.state).toBe("failed"));
+		expect(result.current.generationError).toBe("agent crashed");
+	});
+});

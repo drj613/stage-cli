@@ -89,8 +89,11 @@ function ResolverBody({
 	}
 
 	// Checked before the stale card so a failed Regenerate (or a failed retry
-	// that hasn't refreshed the resolution yet) doesn't get masked by it.
-	if (resolution.state === PR_RESOLUTION.FAILED || (generationError !== null && job === null)) {
+	// that hasn't refreshed the resolution yet) doesn't get masked by it. Both
+	// disjuncts are gated on job === null so a live Retry (or Regenerate) job
+	// falls through to the progress card instead of leaving the failed card
+	// stuck until the job terminates.
+	if (job === null && (resolution.state === PR_RESOLUTION.FAILED || generationError !== null)) {
 		return <FailedCard error={generationError ?? ""} onRetry={generate} />;
 	}
 
