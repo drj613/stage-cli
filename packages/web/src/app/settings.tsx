@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
 import { useState } from "react";
-import { ListEmpty } from "@/components/dashboard/list-notice";
+import { ListEmpty, ListNotice } from "@/components/dashboard/list-notice";
 import { Topbar } from "@/components/layout/topbar";
 import { SectionLabel } from "@/components/shared/section-label";
 import { Button } from "@/components/ui/button";
@@ -35,32 +35,44 @@ function SettingsPage() {
 }
 
 function RootsList() {
-	const { data, isLoading } = useCloneRoots();
+	const { data, error, isLoading } = useCloneRoots();
 	const removeRoot = useRemoveCloneRoot();
 
 	if (isLoading) {
 		return <Skeleton className="h-14 w-full" />;
 	}
 
-	if (!data || data.roots.length === 0) {
-		return <ListEmpty>No clone roots configured.</ListEmpty>;
+	if (error || !data) {
+		return (
+			<ListNotice
+				title="Couldn't load clone roots."
+				details={error instanceof Error ? error.message : "The Stage server didn't respond."}
+			/>
+		);
 	}
 
 	return (
-		<div className="divide-y divide-border overflow-hidden rounded-lg border">
-			{data.roots.map((root) => (
-				<div key={root.path} className="flex items-center justify-between gap-3 px-4 py-3">
-					<span className="min-w-0 truncate font-mono text-sm">{root.path}</span>
-					<Button
-						variant="ghost"
-						size="sm"
-						onClick={() => removeRoot.mutate(root.path)}
-						disabled={removeRoot.isPending}
-					>
-						Remove
-					</Button>
+		<div className="space-y-1.5">
+			{data.roots.length === 0 ? (
+				<ListEmpty>No clone roots configured.</ListEmpty>
+			) : (
+				<div className="divide-y divide-border overflow-hidden rounded-lg border">
+					{data.roots.map((root) => (
+						<div key={root.path} className="flex items-center justify-between gap-3 px-4 py-3">
+							<span className="min-w-0 truncate font-mono text-sm">{root.path}</span>
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={() => removeRoot.mutate(root.path)}
+								disabled={removeRoot.isPending}
+							>
+								Remove
+							</Button>
+						</div>
+					))}
 				</div>
-			))}
+			)}
+			{removeRoot.error && <p className="text-destructive text-xs">{removeRoot.error.message}</p>}
 		</div>
 	);
 }

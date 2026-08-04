@@ -6,7 +6,7 @@ import {
 } from "@stagereview/types/clone-roots";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { OWNERS_QUERY_KEY } from "./use-browse";
+import { OWNER_REPOS_QUERY_KEY, OWNERS_QUERY_KEY, REPO_PULLS_QUERY_KEY } from "./use-browse";
 import { PULL_REQUESTS_QUERY_ROOT } from "./use-pull-requests";
 import { jsonFetch } from "./use-view-state";
 
@@ -37,7 +37,13 @@ async function mutateRoots(method: "POST" | "DELETE", path: string): Promise<Clo
 	return CloneRootsResponseSchema.parse(raw);
 }
 
-/** Root writes invalidate everything derived from the scan. */
+/**
+ * Root writes invalidate everything derived from the scan — including
+ * `owner-repos` and `repo-pulls`, which carry the same `cloned` flag a root
+ * add/remove is meant to change. Missing either would leave a stale
+ * "Not cloned" badge on `/browse/$owner` or `/browse/$owner/$repo` for up to
+ * their staleTime.
+ */
 function useRootsMutation(method: "POST" | "DELETE") {
 	const queryClient = useQueryClient();
 	return useMutation({
@@ -45,6 +51,8 @@ function useRootsMutation(method: "POST" | "DELETE") {
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: CLONE_ROOTS_QUERY_KEY });
 			void queryClient.invalidateQueries({ queryKey: OWNERS_QUERY_KEY });
+			void queryClient.invalidateQueries({ queryKey: OWNER_REPOS_QUERY_KEY });
+			void queryClient.invalidateQueries({ queryKey: REPO_PULLS_QUERY_KEY });
 			void queryClient.invalidateQueries({ queryKey: [PULL_REQUESTS_QUERY_ROOT] });
 		},
 	});
