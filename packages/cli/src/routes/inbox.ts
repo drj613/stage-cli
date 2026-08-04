@@ -23,7 +23,7 @@ export function inboxRoutes(db: StageDb): Route[] {
 					} satisfies InboxResponse);
 					return;
 				}
-				const index = new RunIndex(db);
+				const index = RunIndex.load(db);
 				writeJson(res, 200, {
 					available: true,
 					pullRequests: mapSearchResults(raw, (repo, prNumber) => index.runIdFor(repo, prNumber)),

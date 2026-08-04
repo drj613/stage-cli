@@ -18,10 +18,19 @@ export interface PrRun {
  * Rows are read newest-generated-first, so the first row seen per key wins.
  */
 export class RunIndex {
-	private readonly repoRoots = new Map<string, string>();
-	private readonly runIds = new Map<string, Map<number, PrRun>>();
+	private constructor(
+		private readonly repoRoots: Map<string, string>,
+		private readonly runIds: Map<string, Map<number, PrRun>>,
+	) {}
 
-	constructor(db: StageDb) {
+	static empty(): RunIndex {
+		return new RunIndex(new Map(), new Map());
+	}
+
+	static load(db: StageDb): RunIndex {
+		const repoRoots = new Map<string, string>();
+		const runIds = new Map<string, Map<number, PrRun>>();
+
 		const runs = db
 			.select({
 				id: chapterRun.id,
@@ -38,17 +47,19 @@ export class RunIndex {
 			const repo = parseGitHubRepo(run.originUrl);
 			if (!repo) continue;
 			const nameWithOwner = toNameWithOwner(repo);
-			if (!this.repoRoots.has(nameWithOwner)) this.repoRoots.set(nameWithOwner, run.repoRoot);
+			if (!repoRoots.has(nameWithOwner)) repoRoots.set(nameWithOwner, run.repoRoot);
 			if (run.prNumber === null) continue;
-			let byPrNumber = this.runIds.get(nameWithOwner);
+			let byPrNumber = runIds.get(nameWithOwner);
 			if (!byPrNumber) {
 				byPrNumber = new Map();
-				this.runIds.set(nameWithOwner, byPrNumber);
+				runIds.set(nameWithOwner, byPrNumber);
 			}
 			if (!byPrNumber.has(run.prNumber)) {
 				byPrNumber.set(run.prNumber, { runId: run.id, headSha: run.headSha });
 			}
 		}
+
+		return new RunIndex(repoRoots, runIds);
 	}
 
 	/** Newest run for a PR with the head it was generated at, or null. */

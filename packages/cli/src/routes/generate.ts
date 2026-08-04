@@ -43,7 +43,7 @@ export function generateRoutes(
 				}
 				// Stage generates only for repos it already has a clone path for; it never clones.
 				const nameWithOwner = toNameWithOwner(location);
-				const repoRoot = new RunIndex(db).repoRootFor(nameWithOwner);
+				const repoRoot = RunIndex.load(db).repoRootFor(nameWithOwner);
 				if (!repoRoot) {
 					writeJson(res, 422, {
 						error: `No local clone known for ${nameWithOwner}. Run /stage-chapters once from a clone of it first.`,

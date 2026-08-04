@@ -30,11 +30,9 @@ export interface RescanSummary {
  */
 export class CloneRegistry {
 	private index = CloneIndex.empty();
-	private runIndex: RunIndex;
+	private runIndex = RunIndex.empty();
 
-	private constructor(private readonly db: StageDb) {
-		this.runIndex = new RunIndex(db);
-	}
+	private constructor(private readonly db: StageDb) {}
 
 	static create(db: StageDb): CloneRegistry {
 		const registry = new CloneRegistry(db);
@@ -45,7 +43,7 @@ export class CloneRegistry {
 	rescan(): RescanSummary {
 		const roots = listCloneRoots(this.db).map((row) => row.path);
 		this.index = CloneIndex.scan(roots);
-		this.runIndex = new RunIndex(this.db);
+		this.runIndex = RunIndex.load(this.db);
 		return { repoCount: this.index.size, ownerCount: this.index.owners().length };
 	}
 
