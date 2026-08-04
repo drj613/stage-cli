@@ -3,6 +3,8 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { CloneRegistry } from "../clones/clone-registry.js";
+import { addCloneRoot } from "../clones/clone-root-store.js";
 import { closeDb, getDb, type StageDb } from "../db/client.js";
 import { JobManager, type JobRequest } from "../generation/job-manager.js";
 import { generateRoutes } from "../routes/generate.js";
@@ -47,14 +49,20 @@ function request(
 	});
 }
 
-const KNOWN_REPO_ROOT = "/clones/acme-widgets";
+/** Creates a bare-bones git working tree at `dir` with the given origin url. */
+async function makeClone(dir: string, originUrl: string): Promise<void> {
+	await fs.mkdir(path.join(dir, ".git"), { recursive: true });
+	await fs.writeFile(path.join(dir, ".git", "config"), `[remote "origin"]\n\turl = ${originUrl}\n`);
+}
 
 describe("generate routes", () => {
 	let tmpDir = "";
+	let knownRepoRoot = "";
 	let handle: ServerHandle | null = null;
 	let requested: JobRequest[] = [];
 	let jobs: JobManager;
 	let db: StageDb;
+	let registry: CloneRegistry;
 	/** Holds the runner mid-job so a second request lands while one is in flight. */
 	let blockRunner: () => void;
 	let releaseRunner: () => void;
@@ -66,14 +74,17 @@ describe("generate routes", () => {
 		await fs.writeFile(path.join(webDist, "index.html"), "<html></html>");
 		closeDb();
 		db = getDb({ dbPath: path.join(tmpDir, "db.sqlite") });
+		knownRepoRoot = path.join(tmpDir, "clones", "acme-widgets");
+		await makeClone(knownRepoRoot, "git@github.com:Acme/Widgets.git");
 		insertChaptersFile(
 			db,
 			makeFixture(),
 			makeRepoContext({
-				root: KNOWN_REPO_ROOT,
+				root: knownRepoRoot,
 				originUrl: "git@github.com:Acme/Widgets.git",
 			}),
 		);
+		registry = CloneRegistry.create(db);
 		requested = [];
 		releaseRunner = () => {};
 		let blocked: Promise<void> = Promise.resolve();
@@ -87,7 +98,7 @@ describe("generate routes", () => {
 			await blocked;
 			return "run-abc";
 		});
-		handle = await startServer({ webDistPath: webDist, routes: generateRoutes(db, jobs) });
+		handle = await startServer({ webDistPath: webDist, routes: generateRoutes(jobs, registry) });
 	});
 
 	afterEach(async () => {
@@ -111,7 +122,7 @@ describe("generate routes", () => {
 		expect(requested).toMatchObject([
 			{
 				prUrl: "https://github.com/acme/widgets/pull/7",
-				repoRoot: KNOWN_REPO_ROOT,
+				repoRoot: knownRepoRoot,
 				model: "sonnet",
 			},
 		]);
@@ -133,6 +144,20 @@ describe("generate routes", () => {
 			error: null,
 			queuePosition: null,
 		});
+	});
+
+	it("accepts a PR resolved through the clone index alone, with no prior run", async () => {
+		const rootsDir = path.join(tmpDir, "roots");
+		const gadgetsRoot = path.join(rootsDir, "gadgets");
+		await makeClone(gadgetsRoot, "git@github.com:acme/gadgets.git");
+		addCloneRoot(db, rootsDir);
+		registry.rescan();
+		const res = await request(port(), "POST", "/api/generate", {
+			prUrl: "https://github.com/acme/gadgets/pull/3",
+		});
+		expect(res.status).toBe(202);
+		await jobs.settled();
+		expect(requested).toMatchObject([{ repoRoot: gadgetsRoot }]);
 	});
 
 	it("rejects repos with no known local clone", async () => {
@@ -160,7 +185,7 @@ describe("generate routes", () => {
 	it("falls back to the server's default model when the body omits one", async () => {
 		if (!handle) throw new Error("server not started");
 		await handle.close();
-		handle = await startServer({ routes: generateRoutes(db, jobs, "opus") });
+		handle = await startServer({ routes: generateRoutes(jobs, registry, "opus") });
 		const res = await request(port(), "POST", "/api/generate", {
 			prUrl: "https://github.com/acme/widgets/pull/7",
 		});
@@ -172,7 +197,7 @@ describe("generate routes", () => {
 	it("lets a request body override the server's default model", async () => {
 		if (!handle) throw new Error("server not started");
 		await handle.close();
-		handle = await startServer({ routes: generateRoutes(db, jobs, "opus") });
+		handle = await startServer({ routes: generateRoutes(jobs, registry, "opus") });
 		const res = await request(port(), "POST", "/api/generate", {
 			prUrl: "https://github.com/acme/widgets/pull/7",
 			model: "haiku",

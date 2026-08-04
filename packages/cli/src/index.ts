@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
+import path from "node:path";
 import { Command, Option } from "commander";
 import { z } from "zod";
-import { closeDb } from "./db/client.js";
+import { addCloneRoot, listCloneRoots, removeCloneRoot } from "./clones/clone-root-store.js";
+import { closeDb, getDb } from "./db/client.js";
 import { GENERATION_MODEL } from "./generation/job-manager.js";
 import { runImport } from "./import.js";
 import { runPrep } from "./prep.js";
@@ -114,6 +116,39 @@ program
 	.addOption(modelOption)
 	.action(async (opts: { open: boolean; model: string }) => {
 		await start({ open: opts.open, model: z.enum(GENERATION_MODEL).parse(opts.model) });
+	});
+
+const config = program.command("config").description("Manage Stage configuration");
+
+config
+	.command("add-root")
+	.description("Add a directory Stage scans for local git clones")
+	.argument("<path>", "Path to a directory containing clones")
+	.action((rootPath: string) => {
+		addCloneRoot(getDb(), path.resolve(rootPath));
+		closeDb();
+		process.stdout.write(`Added ${path.resolve(rootPath)}\n`);
+	});
+
+config
+	.command("remove-root")
+	.description("Remove a clone search root")
+	.argument("<path>", "The root path to remove")
+	.action((rootPath: string) => {
+		removeCloneRoot(getDb(), path.resolve(rootPath));
+		closeDb();
+		process.stdout.write(`Removed ${path.resolve(rootPath)}\n`);
+	});
+
+config
+	.command("list-roots")
+	.description("List clone search roots")
+	.action(() => {
+		const roots = listCloneRoots(getDb());
+		closeDb();
+		process.stdout.write(
+			roots.length ? `${roots.map((r) => r.path).join("\n")}\n` : "No clone roots configured.\n",
+		);
 	});
 
 program.parseAsync(process.argv).catch((err) => {

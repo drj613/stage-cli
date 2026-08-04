@@ -1,13 +1,12 @@
 import type { GenerateAccepted, GenerationJob } from "@stagereview/types/generation";
 import { z } from "zod";
-import type { StageDb } from "../db/client.js";
+import type { CloneRegistry } from "../clones/clone-registry.js";
 import {
 	GENERATION_MODEL,
 	type GenerationModel,
 	type JobManager,
 } from "../generation/job-manager.js";
 import { parsePullRequestUrl, toNameWithOwner, toPullRequestUrl } from "../github/index.js";
-import { RunIndex } from "../runs/run-index.js";
 import type { Route } from "../server.js";
 import { parseJsonBody, writeJson } from "./json.js";
 import { enforceSameOrigin } from "./pull-request-shared.js";
@@ -18,8 +17,8 @@ import { enforceSameOrigin } from "./pull-request-shared.js";
  * server startup; a request body's `model` always overrides it.
  */
 export function generateRoutes(
-	db: StageDb,
 	jobs: JobManager,
+	registry: CloneRegistry,
 	defaultModel: GenerationModel = GENERATION_MODEL.SONNET,
 ): Route[] {
 	const generateInput = z.object({
@@ -43,10 +42,10 @@ export function generateRoutes(
 				}
 				// Stage generates only for repos it already has a clone path for; it never clones.
 				const nameWithOwner = toNameWithOwner(location);
-				const repoRoot = RunIndex.load(db).repoRootFor(nameWithOwner);
+				const repoRoot = registry.resolveRepoRoot(nameWithOwner);
 				if (!repoRoot) {
 					writeJson(res, 422, {
-						error: `No local clone known for ${nameWithOwner}. Run /stage-chapters once from a clone of it first.`,
+						error: `No local clone known for ${nameWithOwner}. Add a search root in Settings, or clone the repo first.`,
 					});
 					return;
 				}
