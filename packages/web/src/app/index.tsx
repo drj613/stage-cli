@@ -27,9 +27,7 @@ function Dashboard() {
 				<section className="space-y-3">
 					<SectionLabel>Waiting on your review</SectionLabel>
 					<PullRequestList
-						data={review.data}
-						error={review.error}
-						isLoading={review.isLoading}
+						query={review}
 						rows={reviewRows ?? []}
 						emptyText="Nothing is waiting on your review."
 					/>
@@ -37,9 +35,7 @@ function Dashboard() {
 				<section className="space-y-3">
 					<SectionLabel>Assigned to you</SectionLabel>
 					<PullRequestList
-						data={assigned.data}
-						error={assigned.error}
-						isLoading={assigned.isLoading}
+						query={assigned}
 						rows={dedupeAgainst(assignedRows ?? [], [reviewRows])}
 						emptyText="Nothing is assigned to you."
 					/>
@@ -47,9 +43,7 @@ function Dashboard() {
 				<section className="space-y-3">
 					<SectionLabel>Your open PRs</SectionLabel>
 					<PullRequestList
-						data={authored.data}
-						error={authored.error}
-						isLoading={authored.isLoading}
+						query={authored}
 						rows={dedupeAgainst(authoredRows ?? [], [reviewRows, assignedRows])}
 						emptyText="You have no open pull requests."
 					/>

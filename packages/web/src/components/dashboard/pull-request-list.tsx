@@ -2,22 +2,23 @@ import type {
 	DashboardPullRequest,
 	PullRequestListResponse,
 } from "@stagereview/types/pull-requests";
+import type { UseQueryResult } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ListEmpty, ListNotice } from "@/components/dashboard/list-notice";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatTimeAgo } from "@/lib/format";
+import { splitNameWithOwner } from "@/lib/split-name-with-owner";
 
 export interface PullRequestListProps {
-	data: PullRequestListResponse | undefined;
-	error: unknown;
-	isLoading: boolean;
+	query: Pick<UseQueryResult<PullRequestListResponse>, "data" | "error" | "isLoading">;
 	/** Rows to render — already deduped against higher sections by the caller. */
 	rows: DashboardPullRequest[];
 	emptyText: string;
 }
 
-export function PullRequestList({ data, error, isLoading, rows, emptyText }: PullRequestListProps) {
+export function PullRequestList({ query, rows, emptyText }: PullRequestListProps) {
+	const { data, error, isLoading } = query;
 	if (isLoading) {
 		return (
 			<div className="space-y-3">
@@ -66,7 +67,7 @@ export function PullRequestList({ data, error, isLoading, rows, emptyText }: Pul
 }
 
 function PullRequestRow({ pullRequest }: { pullRequest: DashboardPullRequest }) {
-	const [owner = "", repo = ""] = pullRequest.repository.split("/");
+	const { owner, repo } = splitNameWithOwner(pullRequest.repository);
 	return (
 		<Link
 			to="/pr/$owner/$repo/$number"
