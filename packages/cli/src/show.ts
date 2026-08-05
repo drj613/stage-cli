@@ -1,7 +1,7 @@
+import type { GenerationModel } from "@stagereview/types/generation";
 import open from "open";
 import { buildChaptersFile } from "./build-chapters-file.js";
 import { closeDb, getDb } from "./db/client.js";
-import type { GenerationModel } from "./generation/job-manager.js";
 import { readRepoContext } from "./git.js";
 import { coreRoutes } from "./routes/core.js";
 import { insertChaptersFile } from "./runs/import-chapters.js";

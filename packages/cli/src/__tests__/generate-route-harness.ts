@@ -1,10 +1,11 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { GenerationModel } from "@stagereview/types/generation";
 import { afterEach, beforeEach } from "vitest";
 import { CloneRegistry } from "../clones/clone-registry.js";
 import { closeDb, getDb, type StageDb } from "../db/client.js";
-import { type GenerationModel, JobManager, type JobRequest } from "../generation/job-manager.js";
+import { JobManager, type JobRequest } from "../generation/job-manager.js";
 import { generateRoutes } from "../routes/generate.js";
 import { insertChaptersFile } from "../runs/import-chapters.js";
 import { type ServerHandle, startServer } from "../server.js";

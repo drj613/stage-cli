@@ -1,6 +1,7 @@
+import type { GenerationModel } from "@stagereview/types/generation";
 import { CloneRegistry } from "../clones/clone-registry.js";
 import type { StageDb } from "../db/client.js";
-import { claudeRunner, type GenerationModel, JobManager } from "../generation/job-manager.js";
+import { claudeRunner, JobManager } from "../generation/job-manager.js";
 import type { Route } from "../server.js";
 import { browseRoutes } from "./browse.js";
 import { cloneRootRoutes } from "./clone-roots.js";

@@ -12,7 +12,7 @@ describe("generate routes — default model", () => {
 		});
 		expect(res.status).toBe(202);
 		await env.jobs.settled();
-		expect(env.requested).toMatchObject([{ model: "opus" }]);
+		expect(env.requested).toMatchObject([{ requestedModel: "opus" }]);
 	});
 
 	it("lets a request body override the server's default model", async () => {
@@ -23,6 +23,6 @@ describe("generate routes — default model", () => {
 		});
 		expect(res.status).toBe(202);
 		await env.jobs.settled();
-		expect(env.requested).toMatchObject([{ model: "haiku" }]);
+		expect(env.requested).toMatchObject([{ requestedModel: "haiku" }]);
 	});
 });

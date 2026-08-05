@@ -1,6 +1,6 @@
+import type { GenerationModel } from "@stagereview/types/generation";
 import open from "open";
 import { closeDb, getDb } from "./db/client.js";
-import type { GenerationModel } from "./generation/job-manager.js";
 import { coreRoutes } from "./routes/core.js";
 import { LOOPBACK_HOST, startServer, waitForShutdownSignal } from "./server.js";
 

@@ -18,7 +18,7 @@ describe("generate routes", () => {
 			{
 				prUrl: "https://github.com/acme/widgets/pull/7",
 				repoRoot: env.knownRepoRoot,
-				model: "sonnet",
+				requestedModel: "sonnet",
 			},
 		]);
 		expect(env.requested).toHaveLength(1);

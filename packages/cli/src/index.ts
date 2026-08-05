@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
 import path from "node:path";
+import { GENERATION_MODEL } from "@stagereview/types/generation";
 import { Command, Option } from "commander";
 import { z } from "zod";
 import { addCloneRoot, listCloneRoots, removeCloneRoot } from "./clones/clone-root-store.js";
 import { closeDb, getDb } from "./db/client.js";
-import { GENERATION_MODEL } from "./generation/job-manager.js";
 import { runImport } from "./import.js";
 import { runPrep } from "./prep.js";
 import { WORKING_TREE_REF } from "./schema.js";

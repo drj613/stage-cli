@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+export const GENERATION_MODEL = {
+	SONNET: "sonnet",
+	OPUS: "opus",
+	HAIKU: "haiku",
+} as const;
+export type GenerationModel = (typeof GENERATION_MODEL)[keyof typeof GENERATION_MODEL];
+
 export const JOB_STATUS = {
 	QUEUED: "queued",
 	RUNNING: "running",

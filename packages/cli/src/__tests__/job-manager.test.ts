@@ -14,12 +14,12 @@ describe("JobManager", () => {
 		const a = manager.enqueue({
 			prUrl: "https://github.com/a/a/pull/1",
 			repoRoot: "/a",
-			model: "sonnet",
+			requestedModel: "sonnet",
 		});
 		const b = manager.enqueue({
 			prUrl: "https://github.com/b/b/pull/2",
 			repoRoot: "/b",
-			model: "sonnet",
+			requestedModel: "sonnet",
 		});
 		await manager.settled();
 		expect(order).toEqual([
@@ -41,12 +41,12 @@ describe("JobManager", () => {
 		const bad = manager.enqueue({
 			prUrl: "https://github.com/x/x/pull/9?bad",
 			repoRoot: "/x",
-			model: "sonnet",
+			requestedModel: "sonnet",
 		});
 		const good = manager.enqueue({
 			prUrl: "https://github.com/y/y/pull/3",
 			repoRoot: "/y",
-			model: "sonnet",
+			requestedModel: "sonnet",
 		});
 		await manager.settled();
 		expect(manager.get(bad)?.status).toBe("failed");
@@ -67,17 +67,17 @@ describe("JobManager queuePosition", () => {
 		const first = manager.enqueue({
 			prUrl: "https://github.com/o/r/pull/1",
 			repoRoot: "/o",
-			model: "sonnet",
+			requestedModel: "sonnet",
 		});
 		const second = manager.enqueue({
 			prUrl: "https://github.com/o/r/pull/2",
 			repoRoot: "/o",
-			model: "sonnet",
+			requestedModel: "sonnet",
 		});
 		const third = manager.enqueue({
 			prUrl: "https://github.com/o/r/pull/3",
 			repoRoot: "/o",
-			model: "sonnet",
+			requestedModel: "sonnet",
 		});
 
 		expect(manager.get(first)?.queuePosition).toBeNull(); // running — drain() shifted it off the queue
@@ -101,7 +101,7 @@ describe("JobManager.latestJobFor", () => {
 		const manager = new JobManager(async () => {
 			throw new Error("boom");
 		});
-		const failedId = manager.enqueue({ prUrl: PR_URL, repoRoot: "/o", model: "sonnet" });
+		const failedId = manager.enqueue({ prUrl: PR_URL, repoRoot: "/o", requestedModel: "sonnet" });
 		await manager.settled();
 
 		expect(manager.activeJobFor(PR_URL)).toBeNull(); // terminal jobs stay invisible here
@@ -113,9 +113,9 @@ describe("JobManager.latestJobFor", () => {
 	it("prefers the second job over the first when a PR was retried", async () => {
 		const PR_URL = "https://github.com/o/r/pull/42";
 		const manager = new JobManager(async () => "run-retry");
-		const first = manager.enqueue({ prUrl: PR_URL, repoRoot: "/o", model: "sonnet" });
+		const first = manager.enqueue({ prUrl: PR_URL, repoRoot: "/o", requestedModel: "sonnet" });
 		await manager.settled();
-		const second = manager.enqueue({ prUrl: PR_URL, repoRoot: "/o", model: "sonnet" });
+		const second = manager.enqueue({ prUrl: PR_URL, repoRoot: "/o", requestedModel: "sonnet" });
 		await manager.settled();
 
 		expect(first).not.toBe(second);
@@ -136,7 +136,7 @@ describe("JobManager.activeJobFor", () => {
 		const id = manager.enqueue({
 			prUrl: "https://github.com/Acme/Widgets/pull/7",
 			repoRoot: "/a",
-			model: "sonnet",
+			requestedModel: "sonnet",
 		});
 
 		expect(manager.activeJobFor("https://github.com/acme/widgets/pull/7")?.id).toBe(id);

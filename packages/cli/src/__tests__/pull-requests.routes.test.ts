@@ -109,7 +109,7 @@ describe("pull-requests routes", () => {
 					releaseRunner = () => resolve("run-abc");
 				}),
 		);
-		const jobId = jobs.enqueue({ prUrl: PR_URL, repoRoot, model: "sonnet" });
+		const jobId = jobs.enqueue({ prUrl: PR_URL, repoRoot, requestedModel: "sonnet" });
 		const port = await start(neverCalled);
 		const res = await request(port, `/api/pull-requests/acme/widgets/${PR_NUMBER}`);
 		expect(res.status).toBe(200);
@@ -122,7 +122,7 @@ describe("pull-requests routes", () => {
 		jobs = new JobManager(async () => {
 			throw new Error("agent exploded");
 		});
-		jobs.enqueue({ prUrl: PR_URL, repoRoot, model: "sonnet" });
+		jobs.enqueue({ prUrl: PR_URL, repoRoot, requestedModel: "sonnet" });
 		await jobs.settled();
 		const port = await start(neverCalled);
 		const res = await request(port, `/api/pull-requests/acme/widgets/${PR_NUMBER}`);

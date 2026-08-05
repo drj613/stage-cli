@@ -1,11 +1,12 @@
-import type { GenerateAccepted, GenerationJob } from "@stagereview/types/generation";
-import { z } from "zod";
-import type { CloneRegistry } from "../clones/clone-registry.js";
 import {
 	GENERATION_MODEL,
+	type GenerateAccepted,
+	type GenerationJob,
 	type GenerationModel,
-	type JobManager,
-} from "../generation/job-manager.js";
+} from "@stagereview/types/generation";
+import { z } from "zod";
+import type { CloneRegistry } from "../clones/clone-registry.js";
+import type { JobManager } from "../generation/job-manager.js";
 import { parsePullRequestUrl, toNameWithOwner, toPullRequestUrl } from "../github/index.js";
 import type { Route } from "../server.js";
 import { parseJsonBody, writeJson } from "./json.js";
@@ -55,7 +56,9 @@ export function generateRoutes(
 				// runs no matter how many tabs ask.
 				const prUrl = toPullRequestUrl(location);
 				const active = jobs.activeJobFor(prUrl);
-				const jobId = active ? active.id : jobs.enqueue({ prUrl, repoRoot, model: body.model });
+				const jobId = active
+					? active.id
+					: jobs.enqueue({ prUrl, repoRoot, requestedModel: body.model });
 				writeJson(res, 202, { jobId } satisfies GenerateAccepted);
 			},
 		},

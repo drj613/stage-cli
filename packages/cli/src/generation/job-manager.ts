@@ -1,19 +1,18 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { type GenerationJob, isTerminalJobStatus, JOB_STATUS } from "@stagereview/types/generation";
+import {
+	type GenerationJob,
+	type GenerationModel,
+	isTerminalJobStatus,
+	JOB_STATUS,
+} from "@stagereview/types/generation";
 import { z } from "zod";
-
-export const GENERATION_MODEL = {
-	SONNET: "sonnet",
-	OPUS: "opus",
-	HAIKU: "haiku",
-} as const;
-export type GenerationModel = (typeof GENERATION_MODEL)[keyof typeof GENERATION_MODEL];
 
 export interface JobRequest {
 	prUrl: string;
 	repoRoot: string;
-	model: GenerationModel;
+	/** The model the caller asked for — may differ from what the agent actually runs. */
+	requestedModel: GenerationModel;
 }
 
 export interface Job extends JobRequest, GenerationJob {}
@@ -171,7 +170,7 @@ export function claudeRunner(job: JobRequest): Promise<string> {
 		].join("\n");
 		execFile(
 			"claude",
-			["-p", prompt, "--model", job.model, "--permission-mode", PERMISSION_MODE],
+			["-p", prompt, "--model", job.requestedModel, "--permission-mode", PERMISSION_MODE],
 			{
 				cwd: job.repoRoot,
 				encoding: "utf8",
