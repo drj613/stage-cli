@@ -2,9 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { buildOtherChangesChapter } from "./build-other-changes.js";
-import { parseGitDiff } from "./diff-parser.js";
-import { filterFilesForLlm, loadStageIgnore } from "./filter-files.js";
-import { readRepoRoot } from "./git.js";
+import { type ResolvedFilteredDiff, resolveFilteredDiff } from "./resolve-diff.js";
 import {
 	type AgentOutput,
 	AgentOutputSchema,
@@ -12,9 +10,8 @@ import {
 	type ChaptersFile,
 	ChaptersFileSchema,
 	DIFF_SIDE,
-	type Scope,
 } from "./schema.js";
-import { type DiffScopeOptions, pullRequestNumberFromRef, resolveDiffScope } from "./scope.js";
+import { type DiffScopeOptions, pullRequestNumberFromRef } from "./scope.js";
 
 export interface BuiltChaptersFile {
 	chaptersFile: ChaptersFile;
@@ -43,11 +40,8 @@ export async function buildChaptersFile(
 
 	const agentResult = AgentOutputSchema.safeParse(parsed);
 	if (agentResult.success) {
-		const { scope, rawDiff, prNumber } = await resolveDiffScope(options);
-		return {
-			chaptersFile: assembleChaptersFile(agentResult.data, scope, rawDiff, options.cwd),
-			prNumber,
-		};
+		const diff = await resolveFilteredDiff(options);
+		return { chaptersFile: assembleChaptersFile(agentResult.data, diff), prNumber: diff.prNumber };
 	}
 
 	// Only a full chapters file carries `scope`, so its presence tells us which
@@ -62,15 +56,8 @@ function carriesScope(parsed: unknown): boolean {
 	return object.success && "scope" in object.data;
 }
 
-function assembleChaptersFile(
-	agentOutput: AgentOutput,
-	scope: Scope,
-	rawDiff: string,
-	cwd: string,
-): ChaptersFile {
-	const allFiles = parseGitDiff(rawDiff);
-	const stageIgnore = loadStageIgnore(readRepoRoot(cwd));
-	const { files: filteredFiles, excludedByPath } = filterFilesForLlm(allFiles, stageIgnore);
+function assembleChaptersFile(agentOutput: AgentOutput, diff: ResolvedFilteredDiff): ChaptersFile {
+	const { scope, allFiles, files: filteredFiles, excludedByPath } = diff;
 
 	validateHunkCoverage(filteredFiles, agentOutput.chapters);
 	const sanitized = sanitizeLineRefs(agentOutput.chapters, filteredFiles);

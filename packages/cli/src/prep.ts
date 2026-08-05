@@ -2,11 +2,10 @@ import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Hunk, PullRequestFile } from "@stagereview/types/parsed-diff";
-import { parseGitDiff } from "./diff-parser.js";
-import { filterFilesForLlm, loadStageIgnore } from "./filter-files.js";
 import { formatHunkDiffWithLineNumbers } from "./format-diff.js";
-import { getCommitMessages, readRepoRoot } from "./git.js";
-import { type DiffScopeOptions, resolveDiffScope } from "./scope.js";
+import { getCommitMessages } from "./git.js";
+import { resolveFilteredDiff } from "./resolve-diff.js";
+import type { DiffScopeOptions } from "./scope.js";
 
 function formatHunkForPrompt(file: PullRequestFile, hunk: Hunk): string {
 	return `=== File: ${file.path} (${file.status}) | filePath: "${file.path}", oldStart: ${hunk.oldStart} ===
@@ -15,11 +14,7 @@ ${formatHunkDiffWithLineNumbers(hunk)}`;
 }
 
 export async function runPrep(options: DiffScopeOptions): Promise<string> {
-	const { scope, rawDiff, mergeBaseSha } = await resolveDiffScope(options);
-
-	const allFiles = parseGitDiff(rawDiff);
-	const stageIgnore = loadStageIgnore(readRepoRoot(options.cwd));
-	const { files } = filterFilesForLlm(allFiles, stageIgnore);
+	const { scope, mergeBaseSha, files } = await resolveFilteredDiff(options);
 
 	const formattedHunks = files
 		.flatMap((file) => file.hunks.map((hunk) => formatHunkForPrompt(file, hunk)))
