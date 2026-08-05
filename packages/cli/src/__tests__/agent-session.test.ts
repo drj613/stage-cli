@@ -1,38 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { GENERATION_MODEL, type JobProgress } from "@stagereview/types/generation";
-import { describe, expect, it, vi } from "vitest";
-import { AgentSession } from "../generation/agent-session.js";
-import type { JobRequest } from "../generation/job-manager.js";
+import type { JobProgress } from "@stagereview/types/generation";
+import { describe, expect, it } from "vitest";
+import {
+	ERROR_GRACE_MS,
+	flush,
+	makeSession,
+	successResult,
+	track,
+} from "./agent-session-fixture.js";
 import { FakeChild } from "./fake-child-process.js";
-
-const JOB: JobRequest = {
-	prUrl: "https://github.com/acme/widgets/pull/42",
-	repoRoot: "/repo",
-	requestedModel: GENERATION_MODEL.SONNET,
-};
-
-const TIMEOUT_MS = 1_000;
-const KILL_GRACE_MS = 100;
-const ERROR_GRACE_MS = 50;
-
-function makeSession(child: FakeChild, onProgress: (p: JobProgress) => void = () => {}) {
-	return new AgentSession({
-		job: JOB,
-		onProgress,
-		now: () => 1_700_000_000_000,
-		spawnChild: () => child,
-		timeoutMs: TIMEOUT_MS,
-		killGraceMs: KILL_GRACE_MS,
-		errorGraceMs: ERROR_GRACE_MS,
-	});
-}
-
-/** Lets queued microtasks and stream reads flush. */
-const flush = () => new Promise((resolve) => setImmediate(resolve));
-
-function successResult(runId: string) {
-	return { type: "result", subtype: "success", result: `Done.\n${runId}`, num_turns: 5 };
-}
 
 describe("AgentSession settlement", () => {
 	it("resolves with the runId only after close", async () => {
@@ -44,12 +20,9 @@ describe("AgentSession settlement", () => {
 		child.emitLine(successResult(runId));
 		await flush();
 
-		let settled = false;
-		void run.then(() => {
-			settled = true;
-		});
+		const settlements = track(run);
 		await flush();
-		expect(settled).toBe(false); // result alone must not settle
+		expect(settlements).toHaveLength(0); // result alone must not settle
 
 		child.close(0);
 		await expect(run).resolves.toBe(runId);
@@ -58,7 +31,7 @@ describe("AgentSession settlement", () => {
 	it("pushes a first snapshot immediately after spawn", async () => {
 		const child = new FakeChild();
 		const snapshots: JobProgress[] = [];
-		const session = makeSession(child, (p) => snapshots.push(p));
+		const session = makeSession(child, { onProgress: (p) => snapshots.push(p) });
 		const run = session.run();
 		child.emit("spawn");
 		await flush();
@@ -67,6 +40,18 @@ describe("AgentSession settlement", () => {
 
 		child.close(1);
 		await expect(run).rejects.toThrow();
+	});
+
+	it("refuses a second run() instead of spawning twice", () => {
+		const session = makeSession(new FakeChild());
+		void session.run();
+		expect(() => session.run()).toThrow(/already/);
+	});
+
+	it("refuses a clock JobProgress could not represent", () => {
+		for (const now of [() => 0, () => -5, () => 1.5, () => Number.NaN]) {
+			expect(() => makeSession(new FakeChild(), { now })).toThrow(/epoch/);
+		}
 	});
 
 	it("rejects on a spawn error followed by close, settling once", async () => {
@@ -93,17 +78,9 @@ describe("AgentSession settlement", () => {
 		child.emit("spawn");
 		child.emit("error", new Error("kill ESRCH"));
 
-		let settled = false;
-		void run.then(
-			() => {
-				settled = true;
-			},
-			() => {
-				settled = true;
-			},
-		);
+		const settlements = track(run);
 		await new Promise((resolve) => setTimeout(resolve, ERROR_GRACE_MS * 3));
-		expect(settled).toBe(false); // releasing the queue here could start a second agent
+		expect(settlements).toHaveLength(0); // releasing the queue here could start a second agent
 		expect(child.signals).toContain("SIGKILL");
 
 		child.close(null, "SIGKILL");
@@ -176,6 +153,17 @@ describe("AgentSession settlement", () => {
 		await expect(run).rejects.not.toThrow(/secret token/);
 	});
 
+	it("sees a final line that arrives without a trailing newline", async () => {
+		const runId = randomUUID();
+		const child = new FakeChild();
+		const run = makeSession(child).run();
+		child.emit("spawn");
+		child.stdout.write(JSON.stringify(successResult(runId)));
+		await flush();
+		child.close(0);
+		await expect(run).resolves.toBe(runId);
+	});
+
 	it("mentions dropped lines in a failure message", async () => {
 		const child = new FakeChild();
 		const session = makeSession(child);
@@ -185,50 +173,5 @@ describe("AgentSession settlement", () => {
 		await flush();
 		child.close(0);
 		await expect(run).rejects.toThrow(/1 unreadable line/);
-	});
-});
-
-describe("AgentSession timeout", () => {
-	it("escalates SIGTERM to SIGKILL and stays pending until close", async () => {
-		vi.useFakeTimers();
-		try {
-			const child = new FakeChild();
-			const session = makeSession(child);
-			const run = session.run();
-			let settled = false;
-			void run.catch(() => {
-				settled = true;
-			});
-			child.emit("spawn");
-
-			await vi.advanceTimersByTimeAsync(TIMEOUT_MS);
-			expect(child.signals).toEqual(["SIGTERM"]);
-			expect(settled).toBe(false);
-
-			await vi.advanceTimersByTimeAsync(KILL_GRACE_MS);
-			expect(child.signals).toEqual(["SIGTERM", "SIGKILL"]);
-			expect(settled).toBe(false); // still alive — the queue must not advance
-
-			child.close(null, "SIGKILL");
-			await expect(run).rejects.toThrow(/timed out/);
-		} finally {
-			vi.useRealTimers();
-		}
-	});
-
-	it("reports a timeout, not a signal, when the child dies from our SIGTERM", async () => {
-		vi.useFakeTimers();
-		try {
-			const child = new FakeChild();
-			const session = makeSession(child);
-			const run = session.run();
-			const assertion = expect(run).rejects.toThrow(/timed out/);
-			child.emit("spawn");
-			await vi.advanceTimersByTimeAsync(TIMEOUT_MS);
-			child.close(null, "SIGTERM");
-			await assertion;
-		} finally {
-			vi.useRealTimers();
-		}
 	});
 });
