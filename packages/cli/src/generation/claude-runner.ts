@@ -28,7 +28,11 @@ const SKIPPED_ACTIVITY = {
 	TARGET: "small diff — chapter generation skipped",
 } as const;
 
-/** Everything the runner touches outside itself, so a test can drive it without a network or a process. */
+/**
+ * Everything the runner touches outside itself, so a test can drive it without a
+ * network or an agent process. Not quite everything: `readRepoContext` shells out
+ * to `git` against the job's clone, and is not injected.
+ */
 export interface GenerationDeps {
 	resolveDiff: (options: DiffScopeOptions) => Promise<ResolvedFilteredDiff>;
 	spawnChild: (job: JobRequest) => SpawnedChild;

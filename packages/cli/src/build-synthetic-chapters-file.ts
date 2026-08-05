@@ -15,8 +15,8 @@ const ALL_CHANGES_SUMMARY =
  * generated from the same filtered files the coverage check would compare
  * against — so nothing here needs validating.
  *
- * There is no prologue. A prologue must carry two to five key changes and one to
- * five focus areas, and nothing but an agent can produce those honestly.
+ * There is no prologue. The skill asks a prologue to carry two to five key changes
+ * and one to five focus areas, and nothing but an agent can produce those honestly.
  */
 export function buildSyntheticChaptersFile(diff: ResolvedFilteredDiff): ChaptersFile {
 	const chapters: Chapter[] = [];

@@ -25,6 +25,17 @@ function recordedSeconds(progress: JobProgress | null): number | null {
 }
 
 /**
+ * Whether a snapshot proves no model was ever invoked. The synthetic path builds
+ * a run without spawning an agent, so it reports neither a resolved model nor a
+ * turn. A real agent run is also modelless for its first seconds — before its
+ * init event lands — but by then it has a spawned process, so the two are only
+ * told apart by pairing the missing model with a zero turn count.
+ */
+function usedNoModel(progress: JobProgress): boolean {
+	return progress.resolvedModel === null && progress.turns === 0;
+}
+
+/**
  * `Sonnet 4.5 · 1m 42s · 14 turns`. Elapsed time appears once the process has
  * spawned and the turn count once the agent has taken a turn, so the line grows
  * left to right rather than showing zeroes for a job that has not started. Once
@@ -37,7 +48,10 @@ export function ProgressSummary({ requestedModel, progress, isRunning }: Progres
 	// Only a live job subscribes to the clock; a finished one reads its own record.
 	const ticking = useElapsedSeconds(isRunning ? (progress?.startedAt ?? null) : null);
 	const elapsed = ticking ?? recordedSeconds(progress);
-	const parts = [formatModelLabel(requestedModel, progress?.resolvedModel ?? null)];
+	const parts: string[] = [];
+	if (progress === null || !usedNoModel(progress)) {
+		parts.push(formatModelLabel(requestedModel, progress?.resolvedModel ?? null));
+	}
 	const duration = elapsed === null ? null : formatDurationSeconds(elapsed);
 	if (duration !== null) parts.push(duration);
 	const turns = progress?.turns ?? 0;
