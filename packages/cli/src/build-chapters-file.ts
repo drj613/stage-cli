@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { z } from "zod";
 import { buildOtherChangesChapter } from "./build-other-changes.js";
 import { parseGitDiff } from "./diff-parser.js";
 import { filterFilesForLlm, loadStageIgnore } from "./filter-files.js";
@@ -45,7 +46,16 @@ export async function buildChaptersFile(
 		return { chaptersFile: assembleChaptersFile(agentResult.data, scope, rawDiff), prNumber };
 	}
 
-	throw fullResult.error;
+	// Only a full chapters file carries `scope`, so its presence tells us which
+	// schema the author was aiming at. The agent is asked for the agent shape, and
+	// telling it about `scope` and `generatedAt` — fields it never emits — sends it
+	// chasing the wrong bug.
+	throw carriesScope(parsed) ? fullResult.error : agentResult.error;
+}
+
+function carriesScope(parsed: unknown): boolean {
+	const object = z.record(z.string(), z.unknown()).safeParse(parsed);
+	return object.success && "scope" in object.data;
 }
 
 function assembleChaptersFile(
