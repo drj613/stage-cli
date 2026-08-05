@@ -18,14 +18,14 @@ export async function runPrep(options: DiffScopeOptions): Promise<string> {
 	const { scope, rawDiff, mergeBaseSha } = await resolveDiffScope(options);
 
 	const allFiles = parseGitDiff(rawDiff);
-	const stageIgnore = loadStageIgnore(readRepoRoot());
+	const stageIgnore = loadStageIgnore(readRepoRoot(options.cwd));
 	const { files } = filterFilesForLlm(allFiles, stageIgnore);
 
 	const formattedHunks = files
 		.flatMap((file) => file.hunks.map((hunk) => formatHunkForPrompt(file, hunk)))
 		.join("\n\n");
 
-	const commitMessages = getCommitMessages(mergeBaseSha, scope.headSha);
+	const commitMessages = getCommitMessages(options.cwd, mergeBaseSha, scope.headSha);
 
 	const sections = ["=== COMMIT MESSAGES ===", commitMessages, "", "=== HUNKS ===", formattedHunks];
 

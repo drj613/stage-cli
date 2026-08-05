@@ -30,7 +30,7 @@ describe("runImport", () => {
 
 		const before = db.select().from(chapterRun).all().length;
 
-		const runId = await runImport(fixturePath, {}, db);
+		const runId = await runImport(fixturePath, { cwd: process.cwd() }, db);
 
 		const after = db.select().from(chapterRun).all();
 		expect(after.length).toBe(before + 1);

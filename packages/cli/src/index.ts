@@ -69,11 +69,11 @@ function toDiffScopeOptions(refs: string[], opts: DiffCommandOptions): DiffScope
 		) {
 			throw new Error("--pr cannot be combined with git refs, --base, --compare, or --ref.");
 		}
-		return { pr: opts.pr };
+		return { cwd: process.cwd(), pr: opts.pr };
 	}
 	const workingTreeRef =
 		opts.ref !== undefined ? z.enum(WORKING_TREE_REF).parse(opts.ref) : undefined;
-	return { base: opts.base, compare: opts.compare, refs, workingTreeRef };
+	return { cwd: process.cwd(), base: opts.base, compare: opts.compare, refs, workingTreeRef };
 }
 
 withDiffScope(

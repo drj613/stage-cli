@@ -18,7 +18,9 @@ describe("buildChaptersFile schema errors", () => {
 			prologue: { motivation: null, outcome: null, complexity: "high" },
 		});
 
-		const error = await buildChaptersFile(file, {}).catch((err: unknown) => err);
+		const error = await buildChaptersFile(file, { cwd: process.cwd() }).catch(
+			(err: unknown) => err,
+		);
 
 		expect(String(error)).toContain("prologue");
 		expect(String(error)).not.toContain("scope");
@@ -27,7 +29,9 @@ describe("buildChaptersFile schema errors", () => {
 	it("reports the full-file schema when the payload carries a scope", async () => {
 		const file = writePayload({ scope: { kind: "nonsense" }, chapters: [] });
 
-		const error = await buildChaptersFile(file, {}).catch((err: unknown) => err);
+		const error = await buildChaptersFile(file, { cwd: process.cwd() }).catch(
+			(err: unknown) => err,
+		);
 
 		expect(String(error)).toContain("scope");
 	});

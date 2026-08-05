@@ -36,14 +36,18 @@ export async function buildChaptersFile(
 	// here, not a fetch, since the scope already comes from the file.
 	const fullResult = ChaptersFileSchema.safeParse(parsed);
 	if (fullResult.success) {
-		const prNumber = options.pr === undefined ? null : pullRequestNumberFromRef(options.pr);
+		const prNumber =
+			options.pr === undefined ? null : pullRequestNumberFromRef(options.cwd, options.pr);
 		return { chaptersFile: fullResult.data, prNumber };
 	}
 
 	const agentResult = AgentOutputSchema.safeParse(parsed);
 	if (agentResult.success) {
 		const { scope, rawDiff, prNumber } = await resolveDiffScope(options);
-		return { chaptersFile: assembleChaptersFile(agentResult.data, scope, rawDiff), prNumber };
+		return {
+			chaptersFile: assembleChaptersFile(agentResult.data, scope, rawDiff, options.cwd),
+			prNumber,
+		};
 	}
 
 	// Only a full chapters file carries `scope`, so its presence tells us which
@@ -62,9 +66,10 @@ function assembleChaptersFile(
 	agentOutput: AgentOutput,
 	scope: Scope,
 	rawDiff: string,
+	cwd: string,
 ): ChaptersFile {
 	const allFiles = parseGitDiff(rawDiff);
-	const stageIgnore = loadStageIgnore(readRepoRoot());
+	const stageIgnore = loadStageIgnore(readRepoRoot(cwd));
 	const { files: filteredFiles, excludedByPath } = filterFilesForLlm(allFiles, stageIgnore);
 
 	validateHunkCoverage(filteredFiles, agentOutput.chapters);

@@ -16,6 +16,6 @@ export async function runImport(
 	db: StageDb = getDb(),
 ): Promise<string> {
 	const { chaptersFile, prNumber } = await buildChaptersFile(jsonPath, options);
-	const { runId } = insertChaptersFile(db, chaptersFile, readRepoContext(), prNumber);
+	const { runId } = insertChaptersFile(db, chaptersFile, readRepoContext(options.cwd), prNumber);
 	return runId;
 }

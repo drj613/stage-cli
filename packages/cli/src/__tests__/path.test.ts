@@ -40,6 +40,6 @@ describe("readRepoRoot outside a git repo", () => {
 	});
 
 	it("throws NotInGitRepoError instead of silently falling back to cwd", () => {
-		expect(() => readRepoRoot()).toThrow(NotInGitRepoError);
+		expect(() => readRepoRoot(tmpDir)).toThrow(NotInGitRepoError);
 	});
 });
