@@ -1,12 +1,11 @@
 import {
 	GENERATION_MODEL,
 	type GenerateAccepted,
-	type GenerationJob,
 	type GenerationModel,
 } from "@stagereview/types/generation";
 import { z } from "zod";
 import type { CloneRegistry } from "../clones/clone-registry.js";
-import type { JobManager } from "../generation/job-manager.js";
+import { type JobManager, toWireJob } from "../generation/job-manager.js";
 import { parsePullRequestUrl, toNameWithOwner, toPullRequestUrl } from "../github/index.js";
 import type { Route } from "../server.js";
 import { parseJsonBody, writeJson } from "./json.js";
@@ -72,8 +71,7 @@ export function generateRoutes(
 					writeJson(res, 404, { error: "Job not found" });
 					return;
 				}
-				const { id, status, runId, error, queuePosition } = job;
-				writeJson(res, 200, { id, status, runId, error, queuePosition } satisfies GenerationJob);
+				writeJson(res, 200, toWireJob(job));
 			},
 		},
 	];

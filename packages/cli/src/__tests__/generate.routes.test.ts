@@ -32,12 +32,17 @@ describe("generate routes", () => {
 		const jobId = expectJobId(res.body);
 		const status = await requestJson(env.port(), "GET", `/api/generate/${jobId}`);
 		expect(status.status).toBe(200);
+		// Exhaustive on purpose: repoRoot is an absolute path on the user's machine
+		// and must never appear in a response.
 		expect(status.body).toEqual({
 			id: jobId,
+			prUrl: "https://github.com/acme/widgets/pull/7",
 			status: "succeeded",
+			requestedModel: "sonnet",
 			runId: "run-abc",
 			error: null,
 			queuePosition: null,
+			progress: null,
 		});
 	});
 

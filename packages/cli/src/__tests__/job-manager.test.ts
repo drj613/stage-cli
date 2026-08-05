@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { JobProgress } from "@stagereview/types/generation";
 import { describe, expect, it } from "vitest";
 import { JobManager, parseRunnerOutput } from "../generation/job-manager.js";
 
@@ -145,6 +146,43 @@ describe("JobManager.activeJobFor", () => {
 		release();
 		await manager.settled();
 		expect(manager.activeJobFor("https://github.com/Acme/Widgets/pull/7")).toBeNull();
+	});
+});
+
+describe("JobManager progress", () => {
+	it("exposes the latest snapshot and lists only non-terminal jobs", async () => {
+		let push: (progress: JobProgress) => void = () => {};
+		let release = () => {};
+		const blocked = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const manager = new JobManager(async (_job, onProgress) => {
+			push = onProgress;
+			await blocked;
+			return "run-1";
+		});
+		const id = manager.enqueue({
+			prUrl: "https://github.com/o/r/pull/1",
+			repoRoot: "/o",
+			requestedModel: "sonnet",
+		});
+		await new Promise((r) => setTimeout(r, 0));
+
+		const progress: JobProgress = {
+			startedAt: 1,
+			resolvedModel: "claude-sonnet-5",
+			turns: 3,
+			phase: "analyze",
+			activity: [{ tool: "Read", target: "src/a.ts", state: "done" }],
+		};
+		push(progress);
+		expect(manager.get(id)?.progress).toEqual(progress);
+		expect(manager.get(id)?.requestedModel).toBe("sonnet");
+		expect(manager.activeJobs().map((job) => job.id)).toEqual([id]);
+
+		release();
+		await manager.settled();
+		expect(manager.activeJobs()).toEqual([]);
 	});
 });
 

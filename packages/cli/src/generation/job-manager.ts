@@ -1,13 +1,24 @@
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
 	type GenerationJob,
+	GenerationJobSchema,
 	type GenerationModel,
 	isTerminalJobStatus,
 	JOB_STATUS,
+	type JobProgress,
 } from "@stagereview/types/generation";
-import { parseRunnerOutput } from "./run-id.js";
+import {
+	AGENT_TIMEOUT_MS,
+	AgentSession,
+	ERROR_GRACE_MS,
+	KILL_GRACE_MS,
+	STDOUT_DRAIN_MS,
+	spawnClaude,
+} from "./agent-session.js";
 
+// Re-exported so existing importers (and the job-manager tests) keep resolving
+// it here; the implementation lives in run-id.ts to keep agent-session.ts and
+// job-manager.ts free of an import cycle.
 export { parseRunnerOutput } from "./run-id.js";
 
 export interface JobRequest {
@@ -19,8 +30,21 @@ export interface JobRequest {
 
 export interface Job extends JobRequest, GenerationJob {}
 
-/** Returns the new runId on success. */
-export type JobRunner = (job: JobRequest) => Promise<string>;
+/** Returns the new runId on success. `onProgress` may be called any number of times before then. */
+export type JobRunner = (
+	job: JobRequest,
+	onProgress: (progress: JobProgress) => void,
+) => Promise<string>;
+
+/**
+ * The browser-facing view of a job. `Job` is a supertype of `GenerationJob` — it
+ * also carries `repoRoot`, an absolute path on the user's machine — so serializing
+ * a `Job` directly would leak it. Parsing strips every key the wire type does not
+ * declare, which keeps that true as `Job` grows.
+ */
+export function toWireJob(job: Job): GenerationJob {
+	return GenerationJobSchema.parse(job);
+}
 
 /**
  * Runs generation jobs one at a time. Each job spawns a headless agent that is
@@ -44,6 +68,7 @@ export class JobManager {
 			runId: null,
 			error: null,
 			queuePosition: null,
+			progress: null,
 		};
 		this.jobs.set(job.id, job);
 		this.queue.push(job);
@@ -70,6 +95,18 @@ export class JobManager {
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * Every job that has not reached a terminal status — what the dashboard badges.
+	 * Insertion-ordered, oldest first.
+	 */
+	activeJobs(): Job[] {
+		const active: Job[] = [];
+		for (const job of this.jobs.values()) {
+			if (!isTerminalJobStatus(job.status)) active.push(this.snapshot(job));
+		}
+		return active;
 	}
 
 	/**
@@ -112,13 +149,16 @@ export class JobManager {
 		this.running = true;
 		let job = this.queue.shift();
 		while (job !== undefined) {
-			job.status = JOB_STATUS.RUNNING;
+			const current = job;
+			current.status = JOB_STATUS.RUNNING;
 			try {
-				job.runId = await this.runner(job);
-				job.status = JOB_STATUS.SUCCEEDED;
+				current.runId = await this.runner(current, (progress) => {
+					current.progress = progress;
+				});
+				current.status = JOB_STATUS.SUCCEEDED;
 			} catch (err) {
-				job.status = JOB_STATUS.FAILED;
-				job.error = err instanceof Error ? err.message : String(err);
+				current.status = JOB_STATUS.FAILED;
+				current.error = err instanceof Error ? err.message : String(err);
 			}
 			job = this.queue.shift();
 		}
@@ -127,52 +167,19 @@ export class JobManager {
 	}
 }
 
-const AGENT_OUTPUT_LIMIT_BYTES = 10 * 1024 * 1024;
-const AGENT_TIMEOUT_MS = 15 * 60 * 1000;
-/** How much stderr to quote back when the agent fails — enough to be diagnostic, not a wall of log. */
-const STDERR_TAIL_LINES = 5;
-/** Nobody is at the keyboard to answer tool prompts, and this daemon only ever runs on the user's own machine against their own clones. */
-const PERMISSION_MODE = "bypassPermissions";
-
-/** Last ~5 lines of stderr, formatted for appending to an error message. */
-function stderrTail(stderr: string): string {
-	const lines = stderr.trim().split("\n").slice(-STDERR_TAIL_LINES);
-	return lines.length > 0 && lines[0] !== "" ? `\n${lines.join("\n")}` : "";
-}
-
-/**
- * The real runner: headless claude with the stage-chapters skill, told to
- * finish with `stagereview import` (never `show` — the daemon already serves).
- * Runs in the repo's clone so prep/import resolve the right git state.
- */
-export function claudeRunner(job: JobRequest): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const prompt = [
-			`/stage-chapters --pr ${job.prUrl}`,
-			"IMPORTANT: this is a headless run for the Stage dashboard.",
-			"In the final step, run `stagereview import` (same arguments as `show`) instead of `stagereview show`,",
-			"and print ONLY the runId it outputs as your last line.",
-		].join("\n");
-		execFile(
-			"claude",
-			["-p", prompt, "--model", job.requestedModel, "--permission-mode", PERMISSION_MODE],
-			{
-				cwd: job.repoRoot,
-				encoding: "utf8",
-				maxBuffer: AGENT_OUTPUT_LIMIT_BYTES,
-				timeout: AGENT_TIMEOUT_MS,
-			},
-			(err, stdout, stderr) => {
-				if (err) {
-					reject(new Error(`${err.message}${stderrTail(stderr)}`));
-					return;
-				}
-				try {
-					resolve(parseRunnerOutput(stdout));
-				} catch (parseErr) {
-					reject(parseErr);
-				}
-			},
-		);
-	});
+/** The real runner: one AgentSession per job. */
+export function claudeRunner(
+	job: JobRequest,
+	onProgress: (progress: JobProgress) => void,
+): Promise<string> {
+	return new AgentSession({
+		job,
+		onProgress,
+		now: () => Date.now(),
+		spawnChild: spawnClaude,
+		timeoutMs: AGENT_TIMEOUT_MS,
+		killGraceMs: KILL_GRACE_MS,
+		errorGraceMs: ERROR_GRACE_MS,
+		drainMs: STDOUT_DRAIN_MS,
+	}).run();
 }
