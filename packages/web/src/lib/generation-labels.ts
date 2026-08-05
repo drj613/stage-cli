@@ -3,8 +3,10 @@ import {
 	type ActivityState,
 	GENERATION_MODEL,
 	GENERATION_PHASE,
+	type GenerationJob,
 	type GenerationModel,
 	type GenerationPhase,
+	JOB_STATUS,
 } from "@stagereview/types/generation";
 
 export const PHASE_LABELS: Readonly<Record<GenerationPhase, string>> = {
@@ -21,6 +23,22 @@ export const PHASE_BADGES: Readonly<Record<GenerationPhase, string>> = {
 	[GENERATION_PHASE.WRITE]: "Write",
 	[GENERATION_PHASE.IMPORT]: "Import",
 };
+
+/**
+ * What a dashboard row's badge says about a job in flight.
+ *
+ * Three states, not four: a job is queued, running with nothing reported yet
+ * (the child process hasn't spawned, so there is no phase to name), or running
+ * with a phase. The badge names the current phase only — it never implies the
+ * earlier ones are finished, because a phase can be skipped and the tracker
+ * makes no promise about strict progression.
+ */
+export function formatJobBadge(job: GenerationJob): string {
+	if (job.status === JOB_STATUS.QUEUED) {
+		return job.queuePosition === null ? "Queued" : `Queued #${job.queuePosition}`;
+	}
+	return job.progress === null ? "Starting" : PHASE_BADGES[job.progress.phase];
+}
 
 /** Accessible names for the state glyphs — the icon is never the only signal. */
 export const ACTIVITY_STATE_LABELS: Readonly<Record<ActivityState, string>> = {

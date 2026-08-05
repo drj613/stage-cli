@@ -1,6 +1,53 @@
-import { GENERATION_MODEL } from "@stagereview/types/generation";
+import {
+	GENERATION_MODEL,
+	GENERATION_PHASE,
+	type GenerationJob,
+	type GenerationPhase,
+	JOB_STATUS,
+} from "@stagereview/types/generation";
 import { describe, expect, it } from "vitest";
-import { formatModelLabel } from "../generation-labels";
+import { formatJobBadge, formatModelLabel } from "../generation-labels";
+
+function job(over: Partial<GenerationJob> = {}): GenerationJob {
+	return {
+		id: "job-1",
+		prUrl: "https://github.com/o/r/pull/1",
+		status: JOB_STATUS.RUNNING,
+		requestedModel: GENERATION_MODEL.SONNET,
+		runId: null,
+		error: null,
+		queuePosition: null,
+		progress: null,
+		...over,
+	};
+}
+
+function running(phase: GenerationPhase): GenerationJob {
+	return job({
+		progress: { startedAt: 1, endedAt: null, resolvedModel: null, turns: 0, phase, activity: [] },
+	});
+}
+
+describe("formatJobBadge", () => {
+	it("names the current phase once a snapshot exists", () => {
+		expect(formatJobBadge(running(GENERATION_PHASE.PREP))).toBe("Prep");
+		expect(formatJobBadge(running(GENERATION_PHASE.ANALYZE))).toBe("Analyze");
+		expect(formatJobBadge(running(GENERATION_PHASE.WRITE))).toBe("Write");
+		expect(formatJobBadge(running(GENERATION_PHASE.IMPORT))).toBe("Import");
+	});
+
+	it("says Starting for a running job whose process has not reported yet", () => {
+		expect(formatJobBadge(job({ progress: null }))).toBe("Starting");
+	});
+
+	it("shows the place in line for a queued job", () => {
+		expect(formatJobBadge(job({ status: JOB_STATUS.QUEUED, queuePosition: 2 }))).toBe("Queued #2");
+	});
+
+	it("says Queued without a position when the server reports none", () => {
+		expect(formatJobBadge(job({ status: JOB_STATUS.QUEUED, queuePosition: null }))).toBe("Queued");
+	});
+});
 
 describe("formatModelLabel", () => {
 	it("falls back to the requested alias before the init event resolves a model", () => {

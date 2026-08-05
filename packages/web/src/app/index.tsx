@@ -6,6 +6,7 @@ import { RunList } from "@/components/dashboard/run-list";
 import { Topbar } from "@/components/layout/topbar";
 import { SectionLabel } from "@/components/shared/section-label";
 import { dedupeAgainst } from "@/lib/dedupe-pull-requests";
+import { useActiveJobs } from "@/lib/use-active-jobs";
 import { useCloneRoots } from "@/lib/use-clone-roots";
 import { usePullRequests } from "@/lib/use-pull-requests";
 
@@ -18,6 +19,7 @@ function Dashboard() {
 	const assigned = usePullRequests(PR_FILTER.ASSIGNEE);
 	const authored = usePullRequests(PR_FILTER.AUTHOR);
 	const cloneRoots = useCloneRoots();
+	const activeJobs = useActiveJobs();
 
 	const reviewRows = review.data?.available === true ? review.data.pullRequests : null;
 	const assignedRows = assigned.data?.available === true ? assigned.data.pullRequests : null;
@@ -42,6 +44,7 @@ function Dashboard() {
 						query={review}
 						rows={reviewRows ?? []}
 						emptyText="Nothing is waiting on your review."
+						activeJobs={activeJobs}
 					/>
 				</section>
 				<section className="space-y-3">
@@ -50,6 +53,7 @@ function Dashboard() {
 						query={assigned}
 						rows={dedupeAgainst(assignedRows ?? [], [reviewRows])}
 						emptyText="Nothing is assigned to you."
+						activeJobs={activeJobs}
 					/>
 				</section>
 				<section className="space-y-3">
@@ -58,6 +62,7 @@ function Dashboard() {
 						query={authored}
 						rows={dedupeAgainst(authoredRows ?? [], [reviewRows, assignedRows])}
 						emptyText="You have no open pull requests."
+						activeJobs={activeJobs}
 					/>
 				</section>
 				<section className="space-y-3">

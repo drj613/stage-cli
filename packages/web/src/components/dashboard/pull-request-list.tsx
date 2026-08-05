@@ -1,23 +1,29 @@
+import type { GenerationJob } from "@stagereview/types/generation";
 import type {
 	DashboardPullRequest,
 	PullRequestListResponse,
 } from "@stagereview/types/pull-requests";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { Loader2 } from "lucide-react";
 import { ListEmpty, ListNotice } from "@/components/dashboard/list-notice";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatTimeAgo } from "@/lib/format";
+import { formatJobBadge } from "@/lib/generation-labels";
 import { splitNameWithOwner } from "@/lib/split-name-with-owner";
+import { findJobForPr } from "@/lib/use-active-jobs";
 
 export interface PullRequestListProps {
 	query: Pick<UseQueryResult<PullRequestListResponse>, "data" | "error" | "isLoading">;
 	/** Rows to render — already deduped against higher sections by the caller. */
 	rows: DashboardPullRequest[];
 	emptyText: string;
+	/** Jobs in flight, for badging rows that are mid-generation. */
+	activeJobs: readonly GenerationJob[];
 }
 
-export function PullRequestList({ query, rows, emptyText }: PullRequestListProps) {
+export function PullRequestList({ query, rows, emptyText, activeJobs }: PullRequestListProps) {
 	const { data, error, isLoading } = query;
 	if (isLoading) {
 		return (
@@ -60,13 +66,20 @@ export function PullRequestList({ query, rows, emptyText }: PullRequestListProps
 	return (
 		<div className="divide-y divide-border overflow-hidden rounded-lg border">
 			{rows.map((pr) => (
-				<PullRequestRow key={pr.url} pullRequest={pr} />
+				<PullRequestRow key={pr.url} pullRequest={pr} job={findJobForPr(activeJobs, pr.url)} />
 			))}
 		</div>
 	);
 }
 
-function PullRequestRow({ pullRequest }: { pullRequest: DashboardPullRequest }) {
+function PullRequestRow({
+	pullRequest,
+	job,
+}: {
+	pullRequest: DashboardPullRequest;
+	/** The row's job from the active set, so it is never in a terminal status. */
+	job: GenerationJob | null;
+}) {
 	const { owner, repo } = splitNameWithOwner(pullRequest.repository);
 	return (
 		<Link
@@ -79,7 +92,14 @@ function PullRequestRow({ pullRequest }: { pullRequest: DashboardPullRequest }) 
 					<span className="truncate font-medium text-sm">{pullRequest.title}</span>
 					{pullRequest.isDraft && <Badge variant="outline">Draft</Badge>}
 					{!pullRequest.cloned && <Badge variant="outline">Not cloned</Badge>}
-					{pullRequest.runId !== null && <Badge variant="outline">Chaptered</Badge>}
+					{job !== null ? (
+						<Badge variant="outline">
+							<Loader2 aria-hidden className="animate-spin" />
+							{formatJobBadge(job)}
+						</Badge>
+					) : (
+						pullRequest.runId !== null && <Badge variant="outline">Chaptered</Badge>
+					)}
 				</div>
 				<p className="mt-1 truncate text-muted-foreground text-xs">
 					{pullRequest.repository} #{pullRequest.number} · {pullRequest.author ?? "unknown"} ·{" "}
