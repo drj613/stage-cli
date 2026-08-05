@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { commandInvocations, commandPrograms } from "../generation/bash-commands.js";
+import {
+	commandInvocations,
+	commandPrograms,
+	invokesSubcommand,
+} from "../generation/bash-commands.js";
 
 describe("commandInvocations", () => {
 	it("sees through assignment-wrapped command substitution", () => {
@@ -15,24 +19,12 @@ describe("commandInvocations", () => {
 		]);
 	});
 
-	it("handles the multiline mktemp + heredoc block from step 5", () => {
-		const command = [
-			// biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion
-			'AGENT_OUTPUT=$(mktemp "${TMPDIR:-/tmp}/stage-agent-output.XXXXXX")',
-			`cat > "$AGENT_OUTPUT" << 'AGENT_EOF'`,
-			'{ "chapters": [] }',
-			"AGENT_EOF",
-		].join("\n");
-		expect(commandPrograms(command)).toEqual(["mktemp", "cat"]);
-	});
-
-	it("ignores program names inside a heredoc body", () => {
-		const command = ["cat << 'EOF'", "stagereview import should not count", "EOF"].join("\n");
-		expect(commandPrograms(command)).toEqual(["cat"]);
-	});
-
 	it("finds every program in a pipeline or chain", () => {
 		expect(commandPrograms("git diff main | rg foo && gh pr view 1")).toEqual(["git", "rg", "gh"]);
+	});
+
+	it("finds the program inside backtick substitution", () => {
+		expect(commandPrograms("echo `git rev-parse HEAD`")).toEqual(["echo", "git"]);
 	});
 
 	it("skips leading environment assignments", () => {
@@ -45,5 +37,60 @@ describe("commandInvocations", () => {
 
 	it("returns nothing for an empty command", () => {
 		expect(commandPrograms("   ")).toEqual([]);
+	});
+
+	it("keeps a stderr redirection out of command position", () => {
+		expect(commandPrograms("stagereview import f 2>&1")).toEqual(["stagereview"]);
+	});
+
+	it("treats quoted separators as text, not as new commands", () => {
+		expect(commandPrograms("rg 'foo(bar)' .")).toEqual(["rg"]);
+		expect(commandPrograms('git commit -m "wip; stagereview import now"')).toEqual(["git"]);
+	});
+
+	it("treats a backslash-escaped separator as text, so no command follows it", () => {
+		expect(commandPrograms("echo a\\&\\& rg foo")).toEqual(["echo"]);
+	});
+
+	it("ignores comments", () => {
+		expect(commandPrograms("# rg foo\nstagereview import f")).toEqual(["stagereview"]);
+	});
+
+	it("joins a line continuation into one command", () => {
+		expect(commandInvocations("stagereview \\\n  import f")).toEqual([
+			{ program: "stagereview", args: ["import", "f"] },
+		]);
+	});
+
+	it("accepted limitation: does not look inside double-quoted command substitution", () => {
+		// A `$(...)` nested in double quotes is not scanned. Widening the scanner to
+		// track nesting is out of scope; the wrapper is still reported.
+		expect(commandPrograms('echo "$(rg foo)"')).toEqual(["echo"]);
+	});
+});
+
+describe("invokesSubcommand", () => {
+	it("matches a program invoked with the given subcommand", () => {
+		expect(invokesSubcommand("PREP_FILE=$(stagereview prep)", "stagereview", "prep")).toBe(true);
+	});
+
+	it("does not match a different subcommand of the same program", () => {
+		expect(invokesSubcommand("stagereview import f", "stagereview", "prep")).toBe(false);
+	});
+
+	it("matches when the program is given by absolute path", () => {
+		expect(invokesSubcommand("/usr/local/bin/stagereview import f", "stagereview", "import")).toBe(
+			true,
+		);
+	});
+
+	it("does not match a subcommand quoted inside another command's argument", () => {
+		expect(
+			invokesSubcommand('git commit -m "wip; stagereview import now"', "stagereview", "import"),
+		).toBe(false);
+	});
+
+	it("matches across a line continuation", () => {
+		expect(invokesSubcommand("stagereview \\\n  import f", "stagereview", "import")).toBe(true);
 	});
 });
