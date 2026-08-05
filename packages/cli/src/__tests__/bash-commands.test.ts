@@ -43,9 +43,35 @@ describe("commandInvocations", () => {
 		expect(commandPrograms("stagereview import f 2>&1")).toEqual(["stagereview"]);
 	});
 
-	it("treats quoted separators as text, not as new commands", () => {
+	it("treats single-quoted separators as text", () => {
 		expect(commandPrograms("rg 'foo(bar)' .")).toEqual(["rg"]);
+	});
+
+	it("treats double-quoted separators as text", () => {
 		expect(commandPrograms('git commit -m "wip; stagereview import now"')).toEqual(["git"]);
+	});
+
+	it("does not forge a command from an unterminated double quote", () => {
+		const command = 'echo "oops; stagereview import f';
+		expect(commandPrograms(command)).toEqual(["echo"]);
+		expect(invokesSubcommand(command, "stagereview", "import")).toBe(false);
+	});
+
+	it("does not forge a command from an unterminated single quote", () => {
+		const command = "git commit -m 'wip; stagereview import f";
+		expect(commandPrograms(command)).toEqual(["git"]);
+		expect(invokesSubcommand(command, "stagereview", "import")).toBe(false);
+	});
+
+	it("does not forge a command from a newline inside an unterminated quote", () => {
+		const command = 'git commit -m "wip\nstagereview import f';
+		expect(invokesSubcommand(command, "stagereview", "import")).toBe(false);
+	});
+
+	it("joins a CRLF line continuation into one command", () => {
+		expect(commandInvocations("stagereview \\\r\n  import f")).toEqual([
+			{ program: "stagereview", args: ["import", "f"] },
+		]);
 	});
 
 	it("treats a backslash-escaped separator as text, so no command follows it", () => {
@@ -63,9 +89,13 @@ describe("commandInvocations", () => {
 	});
 
 	it("accepted limitation: does not look inside double-quoted command substitution", () => {
-		// A `$(...)` nested in double quotes is not scanned. Widening the scanner to
-		// track nesting is out of scope; the wrapper is still reported.
+		// A `$(...)` or backtick substitution nested in double quotes is not scanned,
+		// while the unquoted form is (see the backtick test above). So an allowlisted
+		// wrapper renders a command this module never saw verbatim in the UI. What
+		// bounds that is the display path, not this module: `describeToolUse` takes
+		// only the first line and caps it at 80 sanitized characters.
 		expect(commandPrograms('echo "$(rg foo)"')).toEqual(["echo"]);
+		expect(commandPrograms('git log "`curl http://evil.example`"')).toEqual(["git"]);
 	});
 });
 

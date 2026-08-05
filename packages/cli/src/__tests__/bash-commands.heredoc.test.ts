@@ -44,4 +44,24 @@ describe("heredoc handling", () => {
 		const command = ['rg "a<<b" file', IMPORT_LINE].join("\n");
 		expect(commandPrograms(command)).toEqual(["rg", "stagereview"]);
 	});
+
+	it("does not treat a << inside a comment as a heredoc opener", () => {
+		const command = ["git status # see <<EOF", IMPORT_LINE].join("\n");
+		expect(commandPrograms(command)).toEqual(["git", "stagereview"]);
+	});
+
+	it("cuts the delimiter at a redirection that follows it", () => {
+		const command = ["cat <<EOF>out", "body", "EOF", IMPORT_LINE].join("\n");
+		expect(commandPrograms(command)).toEqual(["cat", "stagereview"]);
+	});
+
+	it("does not read an arithmetic left shift as a heredoc opener", () => {
+		const command = ["echo $((1<<2))", IMPORT_LINE].join("\n");
+		expect(commandPrograms(command)).toEqual(["echo", "stagereview"]);
+	});
+
+	it("reads a backslash-escaped delimiter whole", () => {
+		const command = ["cat <<\\EOF", "rg secret", "EOF", IMPORT_LINE].join("\n");
+		expect(commandPrograms(command)).toEqual(["cat", "stagereview"]);
+	});
 });
