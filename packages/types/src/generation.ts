@@ -58,6 +58,12 @@ export type ActivityState = (typeof ACTIVITY_STATE)[keyof typeof ACTIVITY_STATE]
  */
 export const TARGET_LIMIT = 200;
 export const TOOL_LIMIT = 40;
+/**
+ * Wider than a target because a diagnostic is a sentence, not a path, and
+ * narrower than the 500 a whole run's failure gets: this one belongs to a single
+ * row of a list that holds ACTIVITY_LIMIT of them.
+ */
+export const DETAIL_LIMIT = 300;
 
 export const ActivityEntrySchema = z.object({
 	tool: z.string().max(TOOL_LIMIT),
@@ -69,6 +75,16 @@ export const ActivityEntrySchema = z.object({
 	 */
 	target: z.string().max(TARGET_LIMIT),
 	state: z.enum(ACTIVITY_STATE),
+	/**
+	 * Why the step failed: the first non-blank line of the tool's own output,
+	 * sanitized, path-redacted, and capped by the server.
+	 *
+	 * Set only on entries whose `tool_result` came back with `is_error` — a
+	 * successful step is not worth explaining, and its output would be far more of
+	 * the user's code than a failure's first line. Absent on a failure too when the
+	 * result carried no readable text, so `state === "failed"` does not promise it.
+	 */
+	detail: z.string().max(DETAIL_LIMIT).optional(),
 });
 export type ActivityEntry = z.infer<typeof ActivityEntrySchema>;
 

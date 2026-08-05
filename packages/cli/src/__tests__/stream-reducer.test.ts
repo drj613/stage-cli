@@ -1,4 +1,9 @@
-import { ACTIVITY_LIMIT, GENERATION_PHASE, JobProgressSchema } from "@stagereview/types/generation";
+import {
+	ACTIVITY_LIMIT,
+	DETAIL_LIMIT,
+	GENERATION_PHASE,
+	JobProgressSchema,
+} from "@stagereview/types/generation";
 import { describe, expect, it } from "vitest";
 import { StreamReducer } from "../generation/stream-reducer.js";
 
@@ -20,10 +25,12 @@ function assistantWithTools(
 	});
 }
 
-function toolResult(toolUseId: string, isError: boolean): string {
+function toolResult(toolUseId: string, isError: boolean, content?: unknown): string {
 	return JSON.stringify({
 		type: "user",
-		message: { content: [{ type: "tool_result", tool_use_id: toolUseId, is_error: isError }] },
+		message: {
+			content: [{ type: "tool_result", tool_use_id: toolUseId, is_error: isError, content }],
+		},
 	});
 }
 
@@ -74,6 +81,36 @@ describe("StreamReducer", () => {
 		r.consumeLine(toolResult("t1", false));
 		r.consumeLine(toolResult("t2", true));
 		expect(r.snapshot().activity.map((entry) => entry.state)).toEqual(["done", "failed"]);
+	});
+
+	it("explains a failed entry with the tool's own output", () => {
+		const r = reducer();
+		r.consumeLine(
+			assistantWithTools([{ id: "t1", name: "Bash", input: { command: "gh pr view" } }]),
+		);
+		r.consumeLine(toolResult("t1", true, `no default remote\n  in ${REPO_ROOT}/.git`));
+		expect(r.snapshot().activity[0]).toMatchObject({
+			state: "failed",
+			detail: "no default remote",
+		});
+	});
+
+	it("leaves a successful entry with no detail", () => {
+		const r = reducer();
+		r.consumeLine(
+			assistantWithTools([{ id: "t1", name: "Bash", input: { command: "gh pr view" } }]),
+		);
+		r.consumeLine(toolResult("t1", false, "everything worked fine"));
+		expect(r.snapshot().activity[0]?.detail).toBeUndefined();
+	});
+
+	it("snapshots a full window of maximum-length details the wire schema accepts", () => {
+		const r = reducer();
+		for (let i = 0; i < ACTIVITY_LIMIT; i += 1) {
+			r.consumeLine(assistantWithTools([{ id: `t${i}`, name: "Read", input: {} }]));
+			r.consumeLine(toolResult(`t${i}`, true, "e".repeat(DETAIL_LIMIT * 8)));
+		}
+		expect(JobProgressSchema.safeParse(r.snapshot())).toMatchObject({ success: true });
 	});
 
 	it("ignores a result for an entry evicted from the ring", () => {

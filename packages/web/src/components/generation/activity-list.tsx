@@ -38,9 +38,10 @@ function StateIcon({ state, isRunning }: { state: ActivityEntry["state"]; isRunn
  * follows the DOM and so reads newest first, which is the better order for a
  * live log anyway.
  *
- * A long path is contained by min-w-0 + truncate on the target and clipped by
- * overflow-hidden on the row, which is what stops a 40-character tool name
- * (`shrink-0`, so it cannot truncate) from spilling out sideways.
+ * Each item is a column: the tool row, and under it the reason a failed step
+ * failed. A long path is contained by min-w-0 + truncate on the target and
+ * clipped by overflow-hidden on the tool row, which is what stops a 40-character
+ * tool name (`shrink-0`, so it cannot truncate) from spilling out sideways.
  *
  * Deliberately not a live region: the poll rewrites these rows every second or
  * two, which a screen reader would read as a stream of interruptions.
@@ -60,11 +61,21 @@ export function ActivityList({ activity, isRunning }: ActivityListProps) {
 				// position, so no key can follow an entry across polls. The index is
 				// honest about that, and safe while nothing here animates on identity.
 				// biome-ignore lint/suspicious/noArrayIndexKey: no stable id exists on the wire
-				<li key={index} className="flex items-center gap-2 overflow-hidden text-xs">
-					<StateIcon state={entry.state} isRunning={isRunning} />
-					<span className="shrink-0 font-medium text-muted-foreground">{entry.tool}</span>
-					{entry.target !== "" && (
-						<span className="min-w-0 truncate font-mono text-muted-foreground">{entry.target}</span>
+				<li key={index} className="flex flex-col overflow-hidden text-xs">
+					<div className="flex items-center gap-2 overflow-hidden">
+						<StateIcon state={entry.state} isRunning={isRunning} />
+						<span className="shrink-0 font-medium text-muted-foreground">{entry.tool}</span>
+						{entry.target !== "" && (
+							<span className="min-w-0 truncate font-mono text-muted-foreground">
+								{entry.target}
+							</span>
+						)}
+					</div>
+					{/* The server sets this only on a failed result, so no state check is
+					    needed to keep it off the rows that finished. Indented past the
+					    icon and dimmer than the line above, which it explains. */}
+					{entry.detail !== undefined && (
+						<span className="truncate pl-5 text-muted-foreground/70">{entry.detail}</span>
 					)}
 				</li>
 			))}

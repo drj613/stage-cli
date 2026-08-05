@@ -129,7 +129,7 @@ export function sanitizeText(text: string): string {
  * Code units alone would sever a surrogate pair. Splitting on cluster boundaries
  * and measuring each cluster's width satisfies both.
  */
-function cap(text: string, limit: number, unitLimit: number): string {
+export function cap(text: string, limit: number, unitLimit: number): string {
 	const graphemes = clusters(text);
 	if (graphemes.length <= limit && text.length <= unitLimit) return text;
 	// The ellipsis costs a grapheme and a code unit, so it comes out of both budgets.

@@ -1,5 +1,6 @@
+import { DETAIL_LIMIT } from "@stagereview/types/generation";
 import { z } from "zod";
-import { sanitizeText } from "./describe-tool-use.js";
+import { cap, redactPaths, sanitizeText } from "./describe-tool-use.js";
 
 const TOOL_USE = "tool_use";
 const TOOL_RESULT = "tool_result";
@@ -11,10 +12,20 @@ const ToolUseBlockSchema = z.object({
 	name: z.string(),
 	input: z.unknown(),
 });
+/**
+ * `content` is left unvalidated on purpose. The wire format sends it as a plain
+ * string in some results and as an array of content blocks in others, and a
+ * shape neither this file nor a future one recognizes must not fail the block —
+ * that would drop an otherwise usable event and count it as a corrupt line.
+ * {@link toolResultDetail} reads whatever text it can find and gives up quietly.
+ */
 const ToolResultBlockSchema = z.object({
 	type: z.literal(TOOL_RESULT),
 	tool_use_id: z.string(),
 	is_error: z.boolean().optional(),
+	// Optional explicitly: since Zod 4 an `unknown` key is required, and a result
+	// block with no content at all is ordinary.
+	content: z.unknown().optional(),
 });
 
 /**
@@ -180,6 +191,11 @@ const MESSAGE_LIMIT = 500;
 /** Slack for what sanitizing strips, so a trim never loses visible characters. */
 const RAW_LIMIT = MESSAGE_LIMIT * 4;
 const MAX_ERROR_LINES = 10;
+/**
+ * Same slack, for the same reason — but applied per text part as well as to the
+ * join, so a result made of megabyte-sized parts is never assembled whole.
+ */
+const RAW_DETAIL_LIMIT = DETAIL_LIMIT * 4;
 
 /**
  * Trims before sanitizing, not after. Sanitizing walks the string character by
@@ -208,4 +224,48 @@ export function errorResultMessage(event: ErrorResultEvent): string {
 	const phrase = SUBTYPE_PHRASES.get(event.subtype);
 	if (phrase !== undefined) return phrase;
 	return `Agent failed: ${clean(event.subtype)}`.slice(0, MESSAGE_LIMIT);
+}
+
+const TextContentSchema = z.object({ type: z.literal("text"), text: z.string() });
+
+/**
+ * The readable text of a tool result, bounded before anything walks it.
+ *
+ * Two shapes are recognized: a bare string, and an array whose text blocks are
+ * joined by newlines. Anything else — a number, null, an array of images, a
+ * shape the wire format grows later — yields the empty string.
+ */
+function contentText(content: unknown): string {
+	if (typeof content === "string") return content.slice(0, RAW_DETAIL_LIMIT);
+	if (!Array.isArray(content)) return "";
+	let joined = "";
+	for (const part of content) {
+		const parsed = TextContentSchema.safeParse(part);
+		if (!parsed.success) continue;
+		joined += `\n${parsed.data.text.slice(0, RAW_DETAIL_LIMIT)}`;
+		if (joined.length >= RAW_DETAIL_LIMIT) break;
+	}
+	return joined.slice(0, RAW_DETAIL_LIMIT);
+}
+
+/**
+ * One line explaining why a tool call failed, safe to render, or undefined when
+ * the result carries no readable text.
+ *
+ * A tool result is arbitrary program output: compiler errors, stack traces, file
+ * contents. So it is bounded first, then reduced to its first non-blank line —
+ * a stack trace's every frame is the user's source, and only the top line says
+ * what went wrong — then sanitized and stripped of the absolute paths that would
+ * otherwise publish the user's home directory to the browser.
+ *
+ * Callers must only pass the content of a *failed* result. A successful one is
+ * not worth explaining, and its output is far more of the user's code.
+ */
+export function toolResultDetail(content: unknown, repoRoot: string): string | undefined {
+	const firstLine = contentText(content)
+		.split("\n")
+		.find((line) => line.trim() !== "");
+	if (firstLine === undefined) return undefined;
+	const detail = cap(redactPaths(sanitizeText(firstLine), repoRoot), DETAIL_LIMIT, DETAIL_LIMIT);
+	return detail === "" ? undefined : detail;
 }

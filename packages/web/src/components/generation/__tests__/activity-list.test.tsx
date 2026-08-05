@@ -34,8 +34,30 @@ describe("ActivityList", () => {
 
 		// A second span would be an empty element, which the row's gap turns into a
 		// dangling separator after the tool name.
-		expect(container.querySelectorAll("li > span")).toHaveLength(1);
+		expect(container.querySelectorAll("li span")).toHaveLength(1);
 		expect(container.textContent).toBe("Read");
+	});
+
+	it("explains a failed row with the detail the server sent", () => {
+		const activity = [
+			makeEntry({ state: ACTIVITY_STATE.FAILED, detail: "unknown option: --pr" }),
+			makeEntry(),
+		];
+
+		const { container } = render(<ActivityList activity={activity} isRunning />);
+
+		expect(container.textContent).toContain("unknown option: --pr");
+		// Below the tool and target rather than beside them, so a long path and a
+		// long reason do not compete for the same line.
+		expect(container.querySelectorAll("li")[1]?.childElementCount).toBe(2);
+	});
+
+	it("renders nothing extra on a failed row with no detail", () => {
+		const activity = [makeEntry({ state: ACTIVITY_STATE.FAILED })];
+
+		const { container } = render(<ActivityList activity={activity} isRunning />);
+
+		expect(container.querySelector("li")?.childElementCount).toBe(1);
 	});
 
 	it("renders newest first in the DOM so flex-col-reverse shows oldest at the top", () => {

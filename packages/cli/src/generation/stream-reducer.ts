@@ -11,6 +11,7 @@ import {
 	isToolUseBlock,
 	parseStreamEvent,
 	type ResultEvent,
+	toolResultDetail,
 } from "./stream-events.js";
 
 /**
@@ -98,6 +99,9 @@ export class StreamReducer {
 					const entry = this.entryByToolUseId.get(block.tool_use_id);
 					if (entry === undefined) continue;
 					entry.state = isError ? ACTIVITY_STATE.FAILED : ACTIVITY_STATE.DONE;
+					// Only a failure's output is worth carrying: a successful step needs no
+					// explanation, and its content is far more of the user's code.
+					if (isError) entry.detail = toolResultDetail(block.content, this.repoRoot);
 				}
 				return;
 			}
