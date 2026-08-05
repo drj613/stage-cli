@@ -33,3 +33,24 @@ export type GenerationJob = z.infer<typeof GenerationJobSchema>;
 
 export const GenerateAcceptedSchema = z.object({ jobId: z.string() });
 export type GenerateAccepted = z.infer<typeof GenerateAcceptedSchema>;
+
+/**
+ * The four boundaries actually observable in the agent's tool stream. The
+ * stage-chapters skill has six numbered steps, but "finished reading, started
+ * thinking" emits no signal — four honest phases beat six with two guesses.
+ */
+export const GENERATION_PHASE = {
+	PREP: "prep",
+	ANALYZE: "analyze",
+	WRITE: "write",
+	IMPORT: "import",
+} as const;
+export type GenerationPhase = (typeof GENERATION_PHASE)[keyof typeof GENERATION_PHASE];
+
+/** Display order, and the ordinal the tracker's monotonic rule compares. */
+export const GENERATION_PHASE_ORDER = [
+	GENERATION_PHASE.PREP,
+	GENERATION_PHASE.ANALYZE,
+	GENERATION_PHASE.WRITE,
+	GENERATION_PHASE.IMPORT,
+] as const;
