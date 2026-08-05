@@ -12,23 +12,31 @@ export interface ProgressSummaryProps {
 	 */
 	progress: JobProgress | null;
 	/**
-	 * Whether the job can still advance. A terminal job's clock has to stop, and
-	 * the wire carries no end time, so its duration drops off the line rather
-	 * than freezing at whichever second the last poll happened to land on.
+	 * Whether the job can still advance. A terminal job's clock has to stop, so
+	 * its duration comes from the recorded timestamps instead of ticking on.
 	 */
 	isRunning: boolean;
+}
+
+/** The run's own duration in seconds, once it recorded one. */
+function recordedSeconds(progress: JobProgress | null): number | null {
+	if (progress === null || progress.endedAt === null) return null;
+	return (progress.endedAt - progress.startedAt) / 1000;
 }
 
 /**
  * `Sonnet 4.5 · 1m 42s · 14 turns`. Elapsed time appears once the process has
  * spawned and the turn count once the agent has taken a turn, so the line grows
- * left to right rather than showing zeroes for a job that has not started.
+ * left to right rather than showing zeroes for a job that has not started. Once
+ * the job is over the same segment holds still at what the run actually took.
  *
  * Deliberately not a live region: a polite announcement every second would
  * make the page unusable with a screen reader.
  */
 export function ProgressSummary({ requestedModel, progress, isRunning }: ProgressSummaryProps) {
-	const elapsed = useElapsedSeconds(isRunning ? (progress?.startedAt ?? null) : null);
+	// Only a live job subscribes to the clock; a finished one reads its own record.
+	const ticking = useElapsedSeconds(isRunning ? (progress?.startedAt ?? null) : null);
+	const elapsed = ticking ?? recordedSeconds(progress);
 	const parts = [formatModelLabel(requestedModel, progress?.resolvedModel ?? null)];
 	const duration = elapsed === null ? null : formatDurationSeconds(elapsed);
 	if (duration !== null) parts.push(duration);

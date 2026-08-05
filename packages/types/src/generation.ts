@@ -79,6 +79,15 @@ export const JobProgressSchema = z.object({
 	/** Epoch ms, set when the child process spawns. */
 	startedAt: z.number().int().positive(),
 	/**
+	 * Epoch ms, set once for every terminal outcome — success, failure, and
+	 * timeout alike. Null for as long as the job can still advance.
+	 *
+	 * It exists because a finished job's duration cannot be derived from a live
+	 * clock: the SPA has to stop counting, and without an end time it would have
+	 * nothing to put in the duration's place.
+	 */
+	endedAt: z.number().int().positive().nullable(),
+	/**
 	 * The full model identifier the CLI reports in its init event, such as
 	 * `claude-sonnet-4-5-20250929` — NOT a GENERATION_MODEL alias. Null until
 	 * that event arrives, a few seconds into a run.

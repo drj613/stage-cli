@@ -191,11 +191,24 @@ export class JobManager {
 				// path is deliberately left out.
 				console.error(`[stage:generate] ${current.prUrl} failed: ${current.error}`);
 			}
+			this.recordEnd(current, Date.now());
 			this.evictTerminal();
 			job = this.queue.shift();
 		}
 		this.running = false;
 		this.resolveIdle();
+	}
+
+	/**
+	 * Freezes the run's duration at the moment its runner settled, whichever way
+	 * it settled. Written here, once, because this is the only place that knows a
+	 * job is over: the session stops reporting progress the instant it settles, so
+	 * nothing can overwrite the stamp, and a job whose process never reported has
+	 * no snapshot to stamp.
+	 */
+	private recordEnd(job: Job, endedAt: number): void {
+		if (job.progress === null) return;
+		job.progress = { ...job.progress, endedAt };
 	}
 
 	/**

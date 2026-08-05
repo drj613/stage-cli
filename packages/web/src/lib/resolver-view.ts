@@ -2,9 +2,6 @@ import type { GenerationJob, GenerationModel, JobProgress } from "@stagereview/t
 import { isTerminalJobStatus, JOB_STATUS } from "@stagereview/types/generation";
 import { PR_RESOLUTION, type PrResolution } from "@stagereview/types/pull-requests";
 
-/** Shown when a job reports failure without saying why — a card with no text is worse. */
-const UNKNOWN_FAILURE = "Chapter generation failed.";
-
 /**
  * Everything a card says about the job behind it, as one group rather than
  * three loose props: `requestedModel` is the label until `progress` carries a
@@ -35,7 +32,8 @@ function snapshotOf(job: GenerationJob, isRunning: boolean): JobSnapshot {
 export type ResolverView =
 	| { tag: "loading" }
 	| { tag: "error"; message: string }
-	| { tag: "failed"; error: string; snapshot: JobSnapshot | null }
+	/** `error` is the detail under the card's own headline, absent when nothing said why. */
+	| { tag: "failed"; error: string | null; snapshot: JobSnapshot | null }
 	| { tag: "stale"; runId: string }
 	| { tag: "no-clone"; nameWithOwner: string }
 	| { tag: "progress"; queuePosition: number | null; snapshot: JobSnapshot | null };
@@ -90,7 +88,7 @@ export function deriveResolverView({
 		if (job.status === JOB_STATUS.FAILED) {
 			return {
 				tag: "failed",
-				error: job.error ?? generationError ?? UNKNOWN_FAILURE,
+				error: job.error ?? generationError,
 				snapshot: snapshotOf(job, false),
 			};
 		}
@@ -102,7 +100,7 @@ export function deriveResolverView({
 	}
 
 	if (resolution.state === PR_RESOLUTION.FAILED || generationError !== null) {
-		return { tag: "failed", error: generationError ?? UNKNOWN_FAILURE, snapshot: null };
+		return { tag: "failed", error: generationError, snapshot: null };
 	}
 	if (resolution.state === PR_RESOLUTION.STALE) {
 		return { tag: "stale", runId: resolution.runId };

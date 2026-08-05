@@ -85,6 +85,7 @@ export function setupGenerateRoutesTest(): GenerateRoutesEnv {
 			if (failure !== null) {
 				onProgress({
 					startedAt: 1,
+					endedAt: null,
 					resolvedModel: null,
 					turns: 1,
 					phase: GENERATION_PHASE.WRITE,

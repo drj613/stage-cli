@@ -7,6 +7,7 @@ const REPO_ROOT = "/Users/secret/private-repo";
 function makeProgress(overrides: Partial<JobProgress> = {}): JobProgress {
 	return {
 		startedAt: 1,
+		endedAt: null,
 		resolvedModel: "claude-sonnet-5",
 		turns: 3,
 		phase: "analyze",

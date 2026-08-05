@@ -11,6 +11,7 @@ import { ProgressSummary } from "@/components/generation/progress-summary";
 import { Topbar } from "@/components/layout/topbar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { clampErrorDetail } from "@/lib/format";
 import { PHASE_LABELS } from "@/lib/generation-labels";
 import type { JobSnapshot } from "@/lib/resolver-view";
 import { assertUnreachable, deriveResolverView } from "@/lib/resolver-view";
@@ -143,22 +144,31 @@ function FailureDetail({ snapshot }: { snapshot: JobSnapshot }) {
 }
 
 /**
- * `error` and every activity target are sanitized, capped, and path-redacted
- * server-side, so both render as plain text.
+ * The card owns the headline so it reads as an error even when nothing said why;
+ * `error` is the detail beneath it. That detail can be a server message, a
+ * failed fetch, or a schema dump, so it is folded to one clamped line with the
+ * whole text left in the title. Every part of it is sanitized, capped, and
+ * path-redacted server-side, so it renders as plain text.
  */
 function FailedCard({
 	error,
 	snapshot,
 	onRetry,
 }: {
-	error: string;
+	error: string | null;
 	snapshot: JobSnapshot | null;
 	onRetry: () => void;
 }) {
 	return (
 		<div className="space-y-3 rounded-lg border p-4">
-			{/* break-words: a poll failure's message can carry an unbroken URL. */}
-			<p className="break-words text-destructive text-sm">{error}</p>
+			<div className="space-y-1">
+				<p className="font-medium text-destructive text-sm">Chapter generation didn't finish.</p>
+				{error !== null && (
+					<p className="break-words text-muted-foreground text-xs" title={error}>
+						{clampErrorDetail(error)}
+					</p>
+				)}
+			</div>
 			{snapshot !== null && <FailureDetail snapshot={snapshot} />}
 			<Button onClick={onRetry}>
 				<RefreshCw className="size-3.5" />

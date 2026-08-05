@@ -22,6 +22,7 @@ const NEEDS_GENERATION: PrResolution = { state: "needs-generation" };
 
 const progress: JobProgress = {
 	startedAt: 1,
+	endedAt: null,
 	resolvedModel: "claude-sonnet-4-5-20250929",
 	turns: 4,
 	phase: "analyze",
@@ -89,7 +90,7 @@ describe("deriveResolverView job snapshot", () => {
 		).toEqual({ tag: "progress", queuePosition: null, snapshot: null });
 	});
 
-	it("falls back to a generic message when a failed job reports no error", () => {
+	it("carries no detail when a failed job reports no error, leaving the card's headline", () => {
 		expect(
 			deriveResolverView({
 				resolution: GENERATING,
@@ -100,7 +101,7 @@ describe("deriveResolverView job snapshot", () => {
 			}),
 		).toEqual({
 			tag: "failed",
-			error: "Chapter generation failed.",
+			error: null,
 			snapshot: { requestedModel: "sonnet", progress: null, isRunning: false },
 		});
 	});

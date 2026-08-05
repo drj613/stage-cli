@@ -36,7 +36,8 @@ function job(over: Partial<GenerationJob> = {}): GenerationJob {
 function installFetch(opts: {
 	resolution: PrResolution;
 	accept?: { status: number; body: unknown };
-	poll?: GenerationJob[];
+	/** Unknown rather than GenerationJob so a test can serve a payload the schema rejects. */
+	poll?: unknown[];
 }) {
 	const accept = opts.accept ?? { status: 202, body: { jobId: JOB_ID } };
 	const poll = [...(opts.poll ?? [])];
@@ -109,6 +110,26 @@ describe("usePrResolution — job adoption and lifecycle", () => {
 		result.current.generate();
 
 		await waitFor(() => expect(result.current.job?.status).toBe("running"));
+	});
+
+	it("resumes the poll on Retry after it died on a payload the schema rejects", async () => {
+		// The poll doesn't retry, and Retry re-adopts the same jobId, so without a
+		// reset the query stays parked in error on an unchanged key and the button
+		// does nothing at all.
+		installFetch({
+			resolution: { state: "generating", jobId: JOB_ID },
+			poll: [{ id: JOB_ID }, job({ status: "running" })],
+		});
+		const { result } = renderHook(() => usePrResolution(ADDRESS), {
+			wrapper: makeWrapper().Wrapper,
+		});
+
+		await waitFor(() => expect(result.current.pollError).not.toBeNull());
+
+		result.current.generate();
+
+		await waitFor(() => expect(result.current.job?.status).toBe("running"));
+		expect(result.current.pollError).toBeNull();
 	});
 
 	it("invalidates runs and pull-request caches when the job succeeds", async () => {

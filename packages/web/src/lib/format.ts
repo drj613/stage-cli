@@ -20,6 +20,20 @@ export function formatDurationSeconds(seconds: number): string | null {
 	return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
 }
 
+/** Longest error detail a card renders inline; the full text goes in its title. */
+export const ERROR_DETAIL_LIMIT = 240;
+
+/**
+ * Folds a server error onto one readable line. A schema failure's message is a
+ * multi-line JSON dump, which would otherwise fill a card with what reads as a
+ * stack trace.
+ */
+export function clampErrorDetail(text: string): string {
+	const collapsed = text.replace(/\s+/g, " ").trim();
+	if (collapsed.length <= ERROR_DETAIL_LIMIT) return collapsed;
+	return `${collapsed.slice(0, ERROR_DETAIL_LIMIT - 1).trimEnd()}…`;
+}
+
 /** Compact elapsed time between two ISO timestamps, e.g. "1m 12s". */
 export function formatElapsedTime(
 	startedAt: string | null,

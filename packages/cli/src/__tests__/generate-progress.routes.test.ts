@@ -24,6 +24,7 @@ describe("GET /api/generate/:jobId progress", () => {
 		const jobId = expectJobId(start.body);
 		env.pushProgress({
 			startedAt: 1,
+			endedAt: null,
 			resolvedModel: "claude-opus-5",
 			turns: 4,
 			phase: GENERATION_PHASE.ANALYZE,
@@ -60,6 +61,34 @@ describe("GET /api/generate/:jobId progress", () => {
 		expect(job.status).toBe(JOB_STATUS.FAILED);
 		expect(job.error).toBe("boom");
 		expect(job.progress?.phase).toBe(GENERATION_PHASE.WRITE);
+	});
+
+	it("serves an end time once the job is over, so the SPA can stop its clock", async () => {
+		env.blockRunner();
+		const start = await requestJson(env.port(), "POST", "/api/generate", { prUrl: PR_URL });
+		const jobId = expectJobId(start.body);
+		env.pushProgress({
+			startedAt: 1,
+			endedAt: null,
+			resolvedModel: null,
+			turns: 2,
+			phase: GENERATION_PHASE.IMPORT,
+			activity: [],
+		});
+
+		const during = GenerationJobSchema.parse(
+			(await requestJson(env.port(), "GET", `/api/generate/${jobId}`)).body,
+		);
+		expect(during.progress?.endedAt).toBeNull();
+
+		env.releaseRunner();
+		await env.jobs.settled();
+
+		const after = GenerationJobSchema.parse(
+			(await requestJson(env.port(), "GET", `/api/generate/${jobId}`)).body,
+		);
+		expect(after.status).toBe(JOB_STATUS.SUCCEEDED);
+		expect(after.progress?.endedAt).toBeGreaterThan(0);
 	});
 });
 

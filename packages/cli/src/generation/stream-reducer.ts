@@ -117,6 +117,9 @@ export class StreamReducer {
 	snapshot(): JobProgress {
 		return {
 			startedAt: this.startedAt,
+			// Stamped by JobManager when the session settles: the reducer folds lines,
+			// and the last line is not where a run ends.
+			endedAt: null,
 			resolvedModel: this.resolvedModel,
 			turns: this.turns,
 			phase: this.phases.phase,

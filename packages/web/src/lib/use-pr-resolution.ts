@@ -30,6 +30,11 @@ export function prResolutionQueryKey(address: PrAddress): readonly unknown[] {
 	return ["pr-resolution", address.owner.toLowerCase(), address.repo.toLowerCase(), address.number];
 }
 
+/** Null while no job is adopted — the query is disabled by skipToken then, not by its key. */
+function jobQueryKey(jobId: string | null): readonly unknown[] {
+	return ["generation-job", jobId];
+}
+
 /**
  * Starts a headless generation job. Rejects with the server's own message so
  * "no local clone for this repo" (422) reaches the user verbatim.
@@ -116,7 +121,7 @@ export function usePrResolution(address: PrAddress): PrResolutionMachine {
 		startedJobId ?? (resolution?.state === PR_RESOLUTION.GENERATING ? resolution.jobId : null);
 
 	const { data: job, error: pollError } = useQuery<GenerationJob>({
-		queryKey: ["generation-job", jobId],
+		queryKey: jobQueryKey(jobId),
 		queryFn:
 			jobId === null
 				? skipToken
@@ -160,7 +165,13 @@ export function usePrResolution(address: PrAddress): PrResolutionMachine {
 		resolutionError: resolutionQuery.error,
 		job: job ?? null,
 		runId: job?.runId ?? resolvedRunId,
-		generate: () => mutate(),
+		generate: () => {
+			// The poll never retries, so a dead one stays dead — and the server
+			// dedupes on the PR, so this Retry may well hand back the same jobId and
+			// land on the same key. Without the reset the button would look inert.
+			if (jobId !== null) void queryClient.resetQueries({ queryKey: jobQueryKey(jobId) });
+			mutate();
+		},
 		pollError: pollError?.message ?? null,
 		generationError:
 			startError?.message ?? pollError?.message ?? job?.error ?? resolvedFailureError,

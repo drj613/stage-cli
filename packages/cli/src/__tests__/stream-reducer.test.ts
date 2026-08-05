@@ -31,6 +31,7 @@ describe("StreamReducer", () => {
 	it("starts with an empty snapshot at the given time", () => {
 		expect(reducer().snapshot()).toEqual({
 			startedAt: STARTED_AT,
+			endedAt: null,
 			resolvedModel: null,
 			turns: 0,
 			phase: GENERATION_PHASE.PREP,
