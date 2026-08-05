@@ -20,19 +20,28 @@ const OPAQUE_COMMAND = "Shell command";
 const BASH_LIMIT = 80;
 const PATH_LIMIT = 80;
 const PATTERN_LIMIT = 60;
+const TOOL_LIMIT = 40;
 const ELLIPSIS = "…";
+/** Enough for a base letter with a vowel sign and a tone mark; far short of a tower. */
+const MAX_COMBINING_MARKS = 3;
 
 const ESCAPE = 0x1b;
 const BELL = 0x07;
+/** C0 and C1 controls — cursor moves, backspaces, and the bare BEL. */
+const CONTROL_CHARACTERS = /\p{Cc}/gu;
 /**
  * Unicode format characters: the zero-widths, the soft hyphen, invisible maths
- * operators, tag characters, and the bidi controls. Bidi overrides can reverse
- * how a name reads, so `evil.exe` displays as a `.txt`.
+ * operators, variation selectors, tag characters, and the bidi controls. A bidi
+ * override reverses how a name reads, so `exe.evil` displays as `live.exe`.
  */
 const FORMAT_CHARACTERS = /\p{Cf}/gu;
+/** Letters that render as nothing, so they pass for a space in a filename. */
+const BLANK_FILLERS = /[\u115F\u1160\u3164\uFFA0]/gu;
+const COMBINING_MARK = /\p{M}/u;
+const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
-function isControl(code: number): boolean {
-	return code < 0x20 || (code >= 0x7f && code <= 0x9f);
+function clusters(text: string): string[] {
+	return [...GRAPHEMES.segment(text)].map((segment) => segment.segment);
 }
 
 /** Index just past the escape sequence starting at `start`. */
@@ -62,31 +71,58 @@ function endOfEscapeSequence(text: string, start: number): number {
 	return start + 2;
 }
 
+/** Drops the marks past `MAX_COMBINING_MARKS` so one cluster cannot stack arbitrarily tall. */
+function flatten(cluster: string): string {
+	let marks = 0;
+	let out = "";
+	for (const codePoint of cluster) {
+		if (COMBINING_MARK.test(codePoint) && ++marks > MAX_COMBINING_MARKS) continue;
+		out += codePoint;
+	}
+	return out;
+}
+
 /**
- * Removes ANSI escape sequences, control characters, and Unicode format
- * characters, then collapses whitespace. Anything rendered into a terminal or
- * the DOM goes through here, so agent output cannot move the cursor, recolour
- * the log, or smuggle invisible characters into the UI.
+ * Makes agent-authored text safe to render in a terminal and in the DOM.
+ *
+ * Removes, in order: ANSI escape sequences (`ESC [ … ` and `ESC ] … `, plus any
+ * two-character escape), Unicode format characters, and blank-rendering filler
+ * letters. Replaces C0/C1 control characters with a space, bounds the combining
+ * marks on any one character, then collapses whitespace runs and trims.
+ *
+ * What it does NOT do: strip printable characters that merely look confusing.
+ * Homoglyphs stay, and so do strong right-to-left letters such as U+05D0, which
+ * still reorder the neutral characters around them. Stripping real letters would
+ * corrupt legitimate filenames, so that reordering is an accepted limitation.
  */
 export function sanitizeText(text: string): string {
-	let out = "";
+	let escaped = "";
 	let i = 0;
 	while (i < text.length) {
 		if (text.charCodeAt(i) === ESCAPE) {
 			i = endOfEscapeSequence(text, i);
 			continue;
 		}
-		out += isControl(text.charCodeAt(i)) ? " " : text[i];
+		escaped += text.charAt(i);
 		i += 1;
 	}
-	return out.replace(FORMAT_CHARACTERS, "").replace(/\s+/g, " ").trim();
+	return clusters(
+		escaped
+			.replace(CONTROL_CHARACTERS, " ")
+			.replace(FORMAT_CHARACTERS, "")
+			.replace(BLANK_FILLERS, ""),
+	)
+		.map(flatten)
+		.join("")
+		.replace(/\s+/g, " ")
+		.trim();
 }
 
-/** Counts code points, so a cap never splits a surrogate pair in half. */
+/** Counts grapheme clusters, so a cap splits only where a reader sees a boundary. */
 function cap(text: string, limit: number): string {
-	const codePoints = [...text];
-	if (codePoints.length <= limit) return text;
-	return `${codePoints.slice(0, limit - 1).join("")}${ELLIPSIS}`;
+	const graphemes = clusters(text);
+	if (graphemes.length <= limit) return text;
+	return `${graphemes.slice(0, limit - 1).join("")}${ELLIPSIS}`;
 }
 
 export interface ToolDescription {
@@ -109,29 +145,38 @@ function describePath(filePath: string, repoRoot: string): string {
 
 /**
  * Only the first line survives, which matters most for the chapter-writing
- * heredoc: its body is agent-authored prose about the user's code.
+ * heredoc: its body is agent-authored prose about the user's code. A comment on
+ * the first line is refused for the same reason — the tokenizer ignores comments
+ * when finding programs, so displaying one would show arbitrary prose in place of
+ * the command that actually ran.
  */
 function describeCommand(command: string): string {
 	const programs = commandPrograms(command);
 	if (programs.length === 0) return OPAQUE_COMMAND;
 	if (!programs.every((program) => ALLOWED_BASH_PROGRAMS.has(program))) return OPAQUE_COMMAND;
 	const firstLine = sanitizeText(command.split("\n")[0] ?? "");
-	return firstLine === "" ? OPAQUE_COMMAND : cap(firstLine, BASH_LIMIT);
+	if (firstLine === "" || firstLine.startsWith("#")) return OPAQUE_COMMAND;
+	return cap(firstLine, BASH_LIMIT);
 }
 
 /**
- * A displayable description of one tool call. `input` is unvalidated wire data,
- * so every shape is parsed rather than assumed; a shape we don't recognize
- * degrades to the tool name alone rather than throwing.
+ * A displayable description of one tool call. Both `name` and `input` are
+ * unvalidated wire data, so every shape is parsed rather than assumed; a shape we
+ * don't recognize degrades to the tool name alone rather than throwing.
+ *
+ * The name is sanitized once, up front, and that same value both selects the
+ * branch and is returned. Dispatching on the raw name would let a decorated
+ * `Read` fall through to the default and lose its target.
  */
 export function describeToolUse(name: string, input: unknown, repoRoot: string): ToolDescription {
-	switch (name) {
+	const tool = cap(sanitizeText(name), TOOL_LIMIT);
+	switch (tool) {
 		case "Read":
 		case "Write":
 		case "Edit": {
 			const parsed = FilePathInput.safeParse(input);
 			return {
-				tool: name,
+				tool,
 				target: parsed.success
 					? cap(sanitizeText(describePath(parsed.data.file_path, repoRoot)), PATH_LIMIT)
 					: "",
@@ -139,17 +184,17 @@ export function describeToolUse(name: string, input: unknown, repoRoot: string):
 		}
 		case "Bash": {
 			const parsed = CommandInput.safeParse(input);
-			return { tool: name, target: parsed.success ? describeCommand(parsed.data.command) : "" };
+			return { tool, target: parsed.success ? describeCommand(parsed.data.command) : "" };
 		}
 		case "Glob":
 		case "Grep": {
 			const parsed = PatternInput.safeParse(input);
 			return {
-				tool: name,
+				tool,
 				target: parsed.success ? cap(sanitizeText(parsed.data.pattern), PATTERN_LIMIT) : "",
 			};
 		}
 		default:
-			return { tool: name, target: "" };
+			return { tool, target: "" };
 	}
 }

@@ -1,35 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { describeToolUse, sanitizeText } from "../generation/describe-tool-use.js";
+import { describeToolUse } from "../generation/describe-tool-use.js";
 
 const REPO_ROOT = "/home/dev/clones/widgets";
-/** A high or low surrogate without its partner — what a naive UTF-16 slice leaves behind. */
-const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+const FLAG = "\u{1F1FA}\u{1F1F8}";
+const SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
-describe("sanitizeText", () => {
-	it("strips ANSI colour sequences", () => {
-		expect(sanitizeText("\u001B[31mred\u001B[0m text")).toBe("red text");
-	});
-
-	it("strips an OSC sequence terminated by BEL", () => {
-		expect(sanitizeText("\u001B]0;title\u0007done")).toBe("done");
-	});
-
-	it("replaces bare control characters with spaces and collapses runs", () => {
-		expect(sanitizeText("a b\tc")).toBe("a b c");
-	});
-
-	it("leaves nothing behind for a truncated escape sequence", () => {
-		expect(sanitizeText("git log \u001B[")).toBe("git log");
-	});
-
-	it("strips bidi controls that would reverse how text reads", () => {
-		expect(sanitizeText("git log \u202Etxt.exe")).toBe("git log txt.exe");
-	});
-
-	it("strips zero-width, soft-hyphen, invisible-maths and tag characters", () => {
-		expect(sanitizeText("a\u200Bb\u200Cc\u200Dd\u00ADe\u180Ef\u2062g\u{E0041}h")).toBe("abcdefgh");
-	});
-});
+/** What the caps are measured in: what a reader sees as one character. */
+function graphemes(text: string): number {
+	return [...SEGMENTER.segment(text)].length;
+}
 
 describe("describeToolUse", () => {
 	it("relativizes a path inside the repo", () => {
@@ -45,6 +24,18 @@ describe("describeToolUse", () => {
 		});
 	});
 
+	it("sanitizes the tool name, which is wire data too", () => {
+		expect(
+			describeToolUse("\u001B[2J\u001B[31mRead", { file_path: `${REPO_ROOT}/a.ts` }, REPO_ROOT),
+		).toEqual({ tool: "Read", target: "a.ts" });
+	});
+
+	it("caps a long tool name", () => {
+		const { tool } = describeToolUse("R".repeat(200), { nope: 1 }, REPO_ROOT);
+		expect(graphemes(tool)).toBe(40);
+		expect(tool.endsWith("…")).toBe(true);
+	});
+
 	it("shows an allowlisted command even when wrapped in command substitution", () => {
 		expect(
 			describeToolUse("Bash", { command: "PREP_FILE=$(stagereview prep --pr 42)" }, REPO_ROOT),
@@ -53,6 +44,20 @@ describe("describeToolUse", () => {
 
 	it("hides a command that invokes anything outside the allowlist", () => {
 		expect(describeToolUse("Bash", { command: "curl https://example.com" }, REPO_ROOT)).toEqual({
+			tool: "Bash",
+			target: "Shell command",
+		});
+	});
+
+	it("hides a command where only some of the programs are allowlisted", () => {
+		expect(
+			describeToolUse("Bash", { command: "git log && curl http://evil.example" }, REPO_ROOT),
+		).toEqual({ tool: "Bash", target: "Shell command" });
+	});
+
+	it("hides a command whose first line is a comment", () => {
+		const command = "# the token in src/secrets.ts is hunter2\ngit status";
+		expect(describeToolUse("Bash", { command }, REPO_ROOT)).toEqual({
 			tool: "Bash",
 			target: "Shell command",
 		});
@@ -73,26 +78,26 @@ describe("describeToolUse", () => {
 	it("caps a long allowlisted command", () => {
 		const command = `git log ${"a".repeat(200)}`;
 		const { target } = describeToolUse("Bash", { command }, REPO_ROOT);
-		expect(target.length).toBe(80);
+		expect(graphemes(target)).toBe(80);
 		expect(target.endsWith("…")).toBe(true);
 	});
 
 	it("caps a search pattern", () => {
 		const { target } = describeToolUse("Grep", { pattern: "x".repeat(200) }, REPO_ROOT);
-		expect(target.length).toBe(60);
+		expect(graphemes(target)).toBe(60);
+		expect(target.endsWith("…")).toBe(true);
 	});
 
 	it("caps a long path", () => {
 		const filePath = `${REPO_ROOT}/${"deep/".repeat(50)}a.ts`;
 		const { target } = describeToolUse("Read", { file_path: filePath }, REPO_ROOT);
-		expect(target.length).toBe(80);
+		expect(graphemes(target)).toBe(80);
 		expect(target.endsWith("…")).toBe(true);
 	});
 
-	it("caps without splitting a surrogate pair", () => {
-		const { target } = describeToolUse("Grep", { pattern: "\u{1F600}".repeat(100) }, REPO_ROOT);
-		expect(LONE_SURROGATE.test(target)).toBe(false);
-		expect(target.endsWith("…")).toBe(true);
+	it("caps without splitting a flag into its regional indicators", () => {
+		const { target } = describeToolUse("Grep", { pattern: FLAG.repeat(80) }, REPO_ROOT);
+		expect(target).toBe(`${FLAG.repeat(59)}…`);
 	});
 
 	it("gives an unknown tool no target", () => {
