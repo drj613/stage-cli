@@ -135,7 +135,7 @@ function FailureDetail({ snapshot }: { snapshot: JobSnapshot }) {
 				<details className="pt-1">
 					<summary className="cursor-pointer text-muted-foreground text-xs">Last steps</summary>
 					<div className="pt-2">
-						<ActivityList activity={progress.activity} />
+						<ActivityList activity={progress.activity} isRunning={snapshot.isRunning} />
 					</div>
 				</details>
 			)}
@@ -219,7 +219,7 @@ function ProgressCard({
 				</div>
 			</div>
 			<PhaseRail phase={snapshot.progress.phase} />
-			<ActivityList activity={snapshot.progress.activity} />
+			<ActivityList activity={snapshot.progress.activity} isRunning={snapshot.isRunning} />
 		</div>
 	);
 }
