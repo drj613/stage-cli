@@ -12,7 +12,9 @@ import {
 	POLL_INTERVAL_MS,
 	useActiveJobs,
 } from "../use-active-jobs";
+import { REPO_PULLS_QUERY_KEY } from "../use-browse";
 import { PULL_REQUESTS_QUERY_ROOT } from "../use-pull-requests";
+import { RUNS_QUERY_KEY } from "../use-runs";
 
 function job(over: Partial<GenerationJob> = {}): GenerationJob {
 	return {
@@ -87,6 +89,24 @@ describe("useActiveJobs", () => {
 		expect(prCalls).toHaveLength(1);
 	});
 
+	it("refreshes every list that carries a runId when a job goes terminal", async () => {
+		installFetch([[job()], []]);
+		const invalidate = vi.spyOn(client, "invalidateQueries");
+
+		const { result } = renderHook(() => useActiveJobs(), { wrapper });
+		await waitFor(() => expect(result.current).toHaveLength(1));
+
+		await refetch();
+		await waitFor(() => expect(result.current).toHaveLength(0));
+
+		// The dashboard, the repo browser, and the run list all show a row whose
+		// runId the finished job just changed.
+		const keys = invalidate.mock.calls.map((call) => call[0]?.queryKey);
+		expect(keys).toContainEqual([PULL_REQUESTS_QUERY_ROOT]);
+		expect(keys).toContainEqual(REPO_PULLS_QUERY_KEY);
+		expect(keys).toContainEqual(RUNS_QUERY_KEY);
+	});
+
 	it("never invalidates for a job it only ever saw as absent", async () => {
 		installFetch([[]]);
 		const invalidate = vi.spyOn(client, "invalidateQueries");
@@ -98,7 +118,7 @@ describe("useActiveJobs", () => {
 		expect(invalidate).not.toHaveBeenCalled();
 	});
 
-	it("keeps the last known jobs and invalidates nothing when a poll fails", async () => {
+	it("drops the badges and invalidates nothing when a poll fails", async () => {
 		installFetch([[job()], "error"]);
 		const invalidate = vi.spyOn(client, "invalidateQueries");
 
@@ -107,7 +127,11 @@ describe("useActiveJobs", () => {
 
 		await refetch();
 
-		expect(result.current).toHaveLength(1);
+		// A stale snapshot can outlive the run it describes, so a failed poll shows
+		// nothing rather than a spinner for a job that may already be finished.
+		await waitFor(() => expect(result.current).toHaveLength(0));
+		// Losing sight of a job is not the same as watching it finish: nothing here
+		// tells us a run produced anything, so no list gets refetched.
 		expect(invalidate).not.toHaveBeenCalled();
 	});
 });

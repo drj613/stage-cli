@@ -13,8 +13,7 @@ import {
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
-import { PULL_REQUESTS_QUERY_ROOT } from "./use-pull-requests";
-import { RUNS_QUERY_KEY } from "./use-runs";
+import { invalidateRunLists } from "./invalidate-run-lists";
 import { jsonFetch } from "./use-view-state";
 
 const JOB_POLL_INTERVAL_MS = 1_000;
@@ -153,8 +152,7 @@ export function usePrResolution(address: PrAddress): PrResolutionMachine {
 	const succeeded = job?.status === JOB_STATUS.SUCCEEDED;
 	useEffect(() => {
 		if (!succeeded) return;
-		void queryClient.invalidateQueries({ queryKey: RUNS_QUERY_KEY });
-		void queryClient.invalidateQueries({ queryKey: [PULL_REQUESTS_QUERY_ROOT] });
+		invalidateRunLists(queryClient);
 	}, [succeeded, queryClient]);
 
 	const resolvedRunId = resolution?.state === PR_RESOLUTION.READY ? resolution.runId : null;

@@ -29,9 +29,10 @@ export const PHASE_BADGES: Readonly<Record<GenerationPhase, string>> = {
  *
  * Three states, not four: a job is queued, running with nothing reported yet
  * (the child process hasn't spawned, so there is no phase to name), or running
- * with a phase. The badge names the current phase only — it never implies the
- * earlier ones are finished, because a phase can be skipped and the tracker
- * makes no promise about strict progression.
+ * with a phase. The badge names the current phase only. The tracker never
+ * rewinds, but it does skip — an `import` proves the earlier phases happened
+ * without ever having reported them — so the phase on show is not a count of
+ * phases completed.
  */
 export function formatJobBadge(job: GenerationJob): string {
 	if (job.status === JOB_STATUS.QUEUED) {

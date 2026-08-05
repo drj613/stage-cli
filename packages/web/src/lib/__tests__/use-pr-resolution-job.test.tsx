@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { REPO_PULLS_QUERY_KEY } from "../use-browse";
 import { usePrResolution } from "../use-pr-resolution";
 import { PULL_REQUESTS_QUERY_ROOT } from "../use-pull-requests";
 import { RUNS_QUERY_KEY } from "../use-runs";
@@ -132,7 +133,7 @@ describe("usePrResolution — job adoption and lifecycle", () => {
 		expect(result.current.pollError).toBeNull();
 	});
 
-	it("invalidates runs and pull-request caches when the job succeeds", async () => {
+	it("invalidates runs and every pull-request cache when the job succeeds", async () => {
 		installFetch({
 			resolution: { state: "generating", jobId: JOB_ID },
 			poll: [job({ status: "succeeded", runId: "run-9" })],
@@ -147,5 +148,6 @@ describe("usePrResolution — job adoption and lifecycle", () => {
 		const keys = invalidate.mock.calls.map((call) => call[0]?.queryKey);
 		expect(keys).toContainEqual(RUNS_QUERY_KEY);
 		expect(keys).toContainEqual([PULL_REQUESTS_QUERY_ROOT]);
+		expect(keys).toContainEqual(REPO_PULLS_QUERY_KEY);
 	});
 });

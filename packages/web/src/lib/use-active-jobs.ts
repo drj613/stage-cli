@@ -5,8 +5,7 @@ import {
 } from "@stagereview/types/generation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import { PULL_REQUESTS_QUERY_ROOT } from "./use-pull-requests";
-import { RUNS_QUERY_KEY } from "./use-runs";
+import { invalidateRunLists } from "./invalidate-run-lists";
 import { jsonFetch } from "./use-view-state";
 
 export const ACTIVE_JOBS_QUERY_KEY = ["active-generation-jobs"] as const;
@@ -33,19 +32,24 @@ export function activeJobsPollInterval(
 }
 
 /**
- * Every generation job currently queued or running, for badging dashboard rows.
+ * Every generation job currently queued or running, for badging pull-request
+ * rows.
  *
  * The endpoint returns only non-terminal jobs, so a finished job simply
- * disappears. usePullRequests has a stale time but no refetch interval —
- * staleness alone never triggers a fetch — so a departure has to invalidate the
- * list explicitly, or a row would lose its phase badge and never gain
- * "Chaptered".
+ * disappears. Every list that shows a row's `runId` has a stale time but no
+ * refetch interval — staleness alone never triggers a fetch — so a departure has
+ * to invalidate them explicitly, or a row would lose its phase badge and never
+ * gain "Chaptered".
+ *
+ * Returns nothing at all while the poll is in error: a retained snapshot can
+ * outlive the run it describes, and a spinner for a job that finished minutes
+ * ago is worse than no badge.
  */
 export function useActiveJobs(): readonly GenerationJob[] {
 	const queryClient = useQueryClient();
 	const previousIds = useRef<ReadonlySet<string>>(new Set());
 
-	const { data } = useQuery<ActiveGenerationJobs>({
+	const { data, isError } = useQuery<ActiveGenerationJobs>({
 		queryKey: ACTIVE_JOBS_QUERY_KEY,
 		queryFn: async () =>
 			ActiveGenerationJobsSchema.parse(await jsonFetch<unknown>("/api/generate")),
@@ -55,20 +59,19 @@ export function useActiveJobs(): readonly GenerationJob[] {
 	});
 
 	// Keyed off `data`, which only changes on a successful fetch: a failed poll
-	// leaves the last snapshot in place, so it can neither fake a departure nor
-	// blow away a list that was fine.
+	// leaves the last snapshot in the cache, so it can neither fake a departure nor
+	// refetch a list that was fine. Only a job we watched leave means a run
+	// finished; losing sight of one means nothing.
 	const jobs = data?.jobs;
 	useEffect(() => {
 		if (jobs === undefined) return;
 		const current = new Set(jobs.map((activeJob) => activeJob.id));
 		const departed = [...previousIds.current].some((id) => !current.has(id));
 		previousIds.current = current;
-		if (!departed) return;
-		void queryClient.invalidateQueries({ queryKey: [PULL_REQUESTS_QUERY_ROOT] });
-		void queryClient.invalidateQueries({ queryKey: RUNS_QUERY_KEY });
+		if (departed) invalidateRunLists(queryClient);
 	}, [jobs, queryClient]);
 
-	return jobs ?? [];
+	return isError || jobs === undefined ? [] : jobs;
 }
 
 /** The active job for a PR URL, matched case-insensitively as the server does. */
