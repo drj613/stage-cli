@@ -18,11 +18,18 @@ const ALLOWED_BASH_PROGRAMS: ReadonlySet<string> = new Set([
 ]);
 const OPAQUE_COMMAND = "Shell command";
 const BASH_LIMIT = 80;
+const PATH_LIMIT = 80;
 const PATTERN_LIMIT = 60;
 const ELLIPSIS = "…";
 
 const ESCAPE = 0x1b;
 const BELL = 0x07;
+/**
+ * Unicode format characters: the zero-widths, the soft hyphen, invisible maths
+ * operators, tag characters, and the bidi controls. Bidi overrides can reverse
+ * how a name reads, so `evil.exe` displays as a `.txt`.
+ */
+const FORMAT_CHARACTERS = /\p{Cf}/gu;
 
 function isControl(code: number): boolean {
 	return code < 0x20 || (code >= 0x7f && code <= 0x9f);
@@ -56,10 +63,10 @@ function endOfEscapeSequence(text: string, start: number): number {
 }
 
 /**
- * Removes ANSI escape sequences and control characters, then collapses
- * whitespace. Anything rendered into a terminal or the DOM goes through here,
- * so agent output cannot move the cursor, recolour the log, or smuggle
- * invisible characters into the UI.
+ * Removes ANSI escape sequences, control characters, and Unicode format
+ * characters, then collapses whitespace. Anything rendered into a terminal or
+ * the DOM goes through here, so agent output cannot move the cursor, recolour
+ * the log, or smuggle invisible characters into the UI.
  */
 export function sanitizeText(text: string): string {
 	let out = "";
@@ -72,11 +79,14 @@ export function sanitizeText(text: string): string {
 		out += isControl(text.charCodeAt(i)) ? " " : text[i];
 		i += 1;
 	}
-	return out.replace(/\s+/g, " ").trim();
+	return out.replace(FORMAT_CHARACTERS, "").replace(/\s+/g, " ").trim();
 }
 
+/** Counts code points, so a cap never splits a surrogate pair in half. */
 function cap(text: string, limit: number): string {
-	return text.length <= limit ? text : `${text.slice(0, limit - 1)}${ELLIPSIS}`;
+	const codePoints = [...text];
+	if (codePoints.length <= limit) return text;
+	return `${codePoints.slice(0, limit - 1).join("")}${ELLIPSIS}`;
 }
 
 export interface ToolDescription {
@@ -122,7 +132,9 @@ export function describeToolUse(name: string, input: unknown, repoRoot: string):
 			const parsed = FilePathInput.safeParse(input);
 			return {
 				tool: name,
-				target: parsed.success ? sanitizeText(describePath(parsed.data.file_path, repoRoot)) : "",
+				target: parsed.success
+					? cap(sanitizeText(describePath(parsed.data.file_path, repoRoot)), PATH_LIMIT)
+					: "",
 			};
 		}
 		case "Bash": {
