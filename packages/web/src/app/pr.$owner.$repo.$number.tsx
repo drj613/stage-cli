@@ -12,7 +12,7 @@ import { Topbar } from "@/components/layout/topbar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { clampErrorDetail } from "@/lib/format";
-import { PHASE_LABELS } from "@/lib/generation-labels";
+import { formatQueueStatus, PHASE_LABELS } from "@/lib/generation-labels";
 import type { JobSnapshot } from "@/lib/resolver-view";
 import { assertUnreachable, deriveResolverView } from "@/lib/resolver-view";
 import { useCloneRoots } from "@/lib/use-clone-roots";
@@ -192,7 +192,7 @@ function ProgressCard({
 	// child process hasn't reported. Either way the place in line is all the card
 	// can honestly say.
 	if (snapshot === null || snapshot.progress === null) {
-		const body = queuePosition !== null ? `Queued — ${queuePosition} ahead` : "Chaptering…";
+		const body = formatQueueStatus(queuePosition);
 		return (
 			<div className="flex items-center gap-3 rounded-lg border p-4">
 				<Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />

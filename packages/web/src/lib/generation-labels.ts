@@ -40,6 +40,18 @@ export function formatJobBadge(job: GenerationJob): string {
 	return job.progress === null ? "Starting" : PHASE_BADGES[job.progress.phase];
 }
 
+/**
+ * The one line the resolver card can honestly show before any snapshot exists.
+ *
+ * `queuePosition` is a 1-based place in line and the running job is already off
+ * the queue, so position 1 has nothing ahead of it. Stating the position keeps
+ * that true without the arithmetic — and without the awkward "0 ahead" — that
+ * counting the jobs in front would need.
+ */
+export function formatQueueStatus(queuePosition: number | null): string {
+	return queuePosition === null ? "Chaptering…" : `Queued — position ${queuePosition}`;
+}
+
 /** Accessible names for the state glyphs — the icon is never the only signal. */
 export const ACTIVITY_STATE_LABELS: Readonly<Record<ActivityState, string>> = {
 	[ACTIVITY_STATE.RUNNING]: "Running",

@@ -6,7 +6,7 @@ import {
 	JOB_STATUS,
 } from "@stagereview/types/generation";
 import { describe, expect, it } from "vitest";
-import { formatJobBadge, formatModelLabel } from "../generation-labels";
+import { formatJobBadge, formatModelLabel, formatQueueStatus } from "../generation-labels";
 
 function job(over: Partial<GenerationJob> = {}): GenerationJob {
 	return {
@@ -46,6 +46,19 @@ describe("formatJobBadge", () => {
 
 	it("says Queued without a position when the server reports none", () => {
 		expect(formatJobBadge(job({ status: JOB_STATUS.QUEUED, queuePosition: null }))).toBe("Queued");
+	});
+});
+
+describe("formatQueueStatus", () => {
+	it("states the place in line rather than counting jobs ahead", () => {
+		// Position 1 is next up with nothing ahead of it, so the old "{n} ahead"
+		// phrasing read "1 ahead" for a job at the front of an empty queue.
+		expect(formatQueueStatus(1)).toBe("Queued — position 1");
+		expect(formatQueueStatus(3)).toBe("Queued — position 3");
+	});
+
+	it("says the run is under way once the server reports no position", () => {
+		expect(formatQueueStatus(null)).toBe("Chaptering…");
 	});
 });
 
