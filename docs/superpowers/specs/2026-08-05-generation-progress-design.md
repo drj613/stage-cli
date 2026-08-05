@@ -61,11 +61,25 @@ must not fail a run.
 Today the runId is the last line of stdout. Under `stream-json`, stdout is JSON,
 so the runId moves into the `result` event's `result` field (the agent's final
 assistant text). `parseRunnerOutput` keeps its current signature and contract but
-is fed that text instead of raw stdout. A `result` event with `is_error: true`
-or a `subtype` other than `success` rejects with its message.
+is fed that text instead of raw stdout.
 
 This is the single place the change can silently break generation, so it is
 covered by a test against a recorded stream-json fixture.
+
+**The `result` field exists only on the success variant.** Error variants
+(`error_max_turns`, `error_during_execution`) carry no final text, so "reject
+with the result's message" is not a definition. The schema models `result`,
+`error`, and `errors` as optional, and `errorResultMessage(event)` takes the
+first non-empty of:
+
+1. `errors` joined with `; `, sanitized
+2. `error`, sanitized
+3. a phrase for a known subtype — `error_max_turns` → "The agent hit its turn
+   limit."; `error_during_execution` → "The agent errored during execution."
+4. `` `Agent failed: ${subtype}` `` for a subtype we don't recognize
+
+The sanitized stderr tail and, when non-zero, the `droppedLines` count are
+appended to whatever that yields.
 
 ### Process settlement
 
@@ -74,25 +88,45 @@ wrong is the most dangerous part of the change. A missing `error` listener throw
 an unhandled event and takes the daemon down with it, and resolving the moment a
 `result` event arrives would accept a process that then dies non-zero.
 
-`AgentSession.run()` therefore settles exactly once, driven by an explicit state
-machine that waits for **both** a terminal result **and** process close:
+**`run()` settles only on `close`.** This is a queue-safety requirement, not just
+tidiness: `JobManager.drain()` awaits the runner promise, so settling while the
+child is still alive would start the next agent against a worktree the previous
+one may still be writing. A timed-out job must keep the promise pending through
+SIGTERM and, if needed, SIGKILL, until the process is actually gone.
+
+Inputs are recorded; `close` decides.
 
 | Input | Effect |
 | --- | --- |
-| `child.on("error")` (spawn failed — binary missing, EACCES) | reject immediately; no close will arrive |
+| `child.on("error")` (spawn failed, or signal delivery failed) | record the error; do **not** settle — Node emits `close` after a failed spawn |
 | valid `result` event | record it; do **not** settle |
 | duplicate `result` event | ignore the second |
-| `close` with code 0 **and** a recorded success result | resolve with the parsed runId |
-| `close` with code 0 and no result | reject: "agent exited without a result event" |
-| `close` with code 0 and an error result | reject with the result's message |
-| `close` with non-zero code | reject with the code plus the sanitized stderr tail, even if a success result was recorded |
-| `close` via signal | reject naming the signal |
+| timeout fires | record `terminationCause = "timeout"`, send `SIGTERM`, arm the escalation timer; do **not** settle |
+| escalation timer fires | send `SIGKILL`; do **not** settle |
+| `close` | settle, exactly once, by the precedence below |
 
-Timeout is handled explicitly rather than through `spawn`'s `timeout` option,
-because Node documents that a kill signal does not guarantee termination: at
-`AGENT_TIMEOUT_MS` the session sends `SIGTERM`, and if no `close` follows within
-a grace period it escalates to `SIGKILL`. Either way the promise rejects with a
-timeout message.
+Precedence at `close`, first match wins:
+
+1. `terminationCause === "timeout"` → reject as a timeout, **overriding** the
+   observed signal or exit code. The signal is only how we killed it.
+2. a recorded spawn `error` → reject with it
+3. non-zero exit code → reject with the code, even if a success result was
+   recorded
+4. terminated by a signal we did not send → reject naming the signal
+5. no recorded result → reject: "agent exited without a result event"
+6. recorded error result → reject via `errorResultMessage`
+7. recorded success result → resolve with the parsed runId
+
+Every terminal path clears both the timeout and escalation timers.
+
+The one exception to settle-on-close: if `error` fires and no `close` follows
+within a short grace period, `run()` rejects anyway. A process that never closes
+would otherwise wedge the queue permanently, which is the exact hazard the
+settle-on-close rule exists to prevent.
+
+Timeout is handled here rather than through `spawn`'s `timeout` option because
+Node documents that a kill signal does not guarantee termination, and because the
+option would settle the process without giving us the escalation step.
 
 ### Malformed input
 
@@ -137,11 +171,33 @@ Detection keys on CLI subcommand names — the CLI's own stable contract, rather
 than skill prose that changes freely. Two rules make the detection precise
 rather than approximate:
 
-**Anchored parsing, not substring search.** A Bash command is tokenized and
-matched on its leading program and subcommand (`stagereview` + `prep`,
-`stagereview` + `import`). Searching arbitrary tool input for the string
-`stagereview import` would fire on a command that merely mentions it — an `echo`,
-a `grep`, a comment in a heredoc.
+**Anchored parsing, not substring search — and anchored to the forms the skill
+actually emits.** A leading-token parser is wrong here: `SKILL.md:38` invokes
+prep as command substitution inside an assignment,
+
+```bash
+PREP_FILE=$(stagereview prep)
+```
+
+so `stagereview` is never the first token. Step 5 is worse — one multiline Bash
+call that opens with `AGENT_OUTPUT=$(mktemp …)` and continues into a `cat`
+heredoc (`SKILL.md:298`). Only `stagereview import` arrives in leading position.
+
+The recognizer therefore scans each line of the command for `stagereview`
+preceded by nothing but a command-position prefix: start of line, `$(`, a
+backtick, `&&`, `||`, `;`, or `|`, with an optional `VAR=` immediately before a
+`$(`. That is a narrow recognizer for known forms, not a shell parser — writing
+a general one by hand is out of scope, and pulling in a shell-parsing library for
+two commands is not worth the dependency.
+
+Write-phase detection keys on the literal heredoc delimiter `AGENT_EOF` appearing
+in the command, or a `Write` tool targeting a `stage-agent-output*` path. The
+delimiter is a distinctive fixed token the skill specifies verbatim, which makes
+it a more reliable signal than trying to parse the redirect.
+
+**Tests use commands copied verbatim from `SKILL.md`**, not simplified
+`stagereview prep` fixtures — a fixture that omits the `$(…)` wrapper would pass
+against a parser that fails in production.
 
 **Phases advance on successful completion, not on invocation.** Seeing the
 `stagereview prep` `tool_use` does not leave Prep. The tracker records that
@@ -167,10 +223,23 @@ New, all under `packages/cli/src/generation/`:
 
 - **`agent-session.ts`** — one class per agent process. Owns `spawn`, the
   settlement state machine, and stderr handling. Process I/O only.
-- **`stream-reducer.ts`** — pure. Folds a sequence of parsed events into a
-  `JobProgress`, owning the activity ring, the `tool_use_id` correlation map,
-  the turn count, and the `droppedLines` tally. Testable without spawning
-  anything.
+- **`stream-reducer.ts`** — pure. Owns the whole line-to-progress path:
+
+  ```ts
+  consumeLine(line: string): void
+  snapshot(): JobProgress
+  ```
+
+  `consumeLine` does the JSON parsing, the Zod validation, and the
+  `droppedLines` accounting, then folds the event into the activity ring, the
+  `tool_use_id` correlation map, the turn count, and the phase. `AgentSession`
+  hands it raw lines and never parses one itself — otherwise the reducer could
+  not count parse failures it never saw, and "process I/O only" would be a
+  fiction.
+
+  `snapshot()` returns a deep copy: the activity ring is mutable and reducer-
+  owned, and handing `JobManager` a live reference would let it observe entries
+  changing underneath a response it has already begun serializing.
 - **`phase-tracker.ts`** — the pure phase mapping described above.
 - **`describe-tool-use.ts`** — `(name, input) → { tool, target }`.
 
@@ -180,6 +249,12 @@ tests genuinely pure units rather than process tests wearing a unit's clothes.
 `JobManager` remains a queue and gains no stream knowledge. `JobRunner` grows a
 second parameter, `onProgress`, and `JobManager` stores the latest snapshot on
 the job.
+
+`AgentSession` calls `onProgress` with a snapshot **immediately after a
+successful spawn**, before any event arrives. Without that first push, `progress`
+would stay `null` until `system/init` lands seconds later, and a running job
+would be indistinguishable from a queued one for that window — the exact gap the
+three-state table below exists to close.
 
 ### Telemetry safety
 
@@ -217,6 +292,21 @@ the displayed set is now a bounded, sanitized, allowlisted vocabulary rather
 than arbitrary agent output.
 
 ## Wire format
+
+### Prerequisite: move `GENERATION_MODEL` into the types package
+
+`GENERATION_MODEL` and `GenerationModel` currently live in
+`packages/cli/src/generation/job-manager.ts:6`, on the CLI side of the package
+boundary. `GenerationJobSchema` now needs the type, and a shared wire schema
+cannot import from the CLI. Both move to `@stagereview/types/generation`; the
+CLI and web import them from there. `generate.ts`'s `z.enum(GENERATION_MODEL)`
+is unaffected beyond its import path.
+
+`JobRequest.model` is renamed to `requestedModel` rather than mapped, because
+`Job extends JobRequest, GenerationJob` — leaving both a `model` and a
+`requestedModel` on the same object invites picking the wrong one. The rename
+touches `enqueue`, `claudeRunner`'s `--model` argument, and the `POST` handler;
+the request body's field stays `model`, since that is the public API.
 
 In `packages/types/src/generation.ts`:
 
@@ -311,6 +401,23 @@ previous set and absent from the current one invalidates
 `usePrResolution` already does on its own job's terminal transition, but covers
 the dashboard, which has no per-job poll of its own.
 
+### Presentation criteria
+
+Acceptance criteria for the rail and activity list, so they don't get decided
+ad hoc during implementation:
+
+- The current phase is identified semantically — a text label plus
+  `aria-current="step"` — not by color alone.
+- Activity state glyphs carry accessible labels (`running` / `done` / `failed`);
+  they are never the sole carrier of meaning.
+- The elapsed-time counter is **not** in a live region. A polite announcement
+  every second would make the page unusable with a screen reader.
+- Long targets truncate with `text-overflow` inside a fixed-width container; the
+  card's width never depends on the longest path the agent happened to touch.
+- The newest activity entry stays visible without manual scrolling.
+- The four-phase rail degrades to a stacked or abbreviated form on narrow
+  layouts rather than overflowing.
+
 **`ResolverView`** — the `progress` and `failed` variants each carry the
 progress snapshot:
 
@@ -363,23 +470,36 @@ non-terminal jobs; a queued job reports `requestedModel` with `progress: null`.
 the races that `execFile` used to handle for us and are the highest-risk part of
 the change:
 
-- spawn `error` (missing binary) rejects rather than throwing an unhandled event
-- exit by signal rejects naming the signal
+- spawn `error` (missing binary) rejects rather than throwing an unhandled
+  event — the stub emits `error` **followed by** `close`, matching Node's
+  documented behavior, and the run must settle once
+- `error` with no `close` following rejects via the grace-period backstop
+- exit by a signal we did not send rejects naming the signal
 - zero exit with no result event rejects
 - valid success result followed by a non-zero close rejects
 - duplicate `result` events settle once
 - timeout sends `SIGTERM`, then escalates to `SIGKILL` when no close follows
+- **the runner stays pending between `SIGTERM` and `close`, and the next queued
+  job does not start during that window** — asserted through `JobManager`, since
+  this is the property that keeps two agents off one worktree
+- a timed-out child that closes via `SIGTERM` rejects as a *timeout*, not as a
+  signal termination
+- an error `result` with no `result` field produces a message from `errors` /
+  `error` / the subtype phrase, in that order
 
 **Pure logic units**
 
-- `PhaseTracker` — advances only on a *successful* prep `tool_result` matched by
-  `tool_use_id`; a failed prep stays in Prep; anchored command matching does not
-  fire on a command that merely mentions `stagereview import`; never rewinds;
-  unknown tools leave the phase alone.
-- `StreamReducer` — one assistant message with parallel tool calls counts as one
+- `PhaseTracker` — recognizes `PREP_FILE=$(stagereview prep)` and the multiline
+  `AGENT_OUTPUT=$(mktemp …)` + `cat … << 'AGENT_EOF'` block **verbatim from
+  `SKILL.md`**; advances only on a *successful* prep `tool_result` matched by
+  `tool_use_id`; a failed prep stays in Prep; does not fire on a command that
+  merely mentions `stagereview import` in an `echo` or a heredoc body; never
+  rewinds; unknown tools leave the phase alone.
+- `StreamReducer` — `consumeLine` on malformed JSON increments `droppedLines`
+  without aborting; one assistant message with parallel tool calls counts as one
   turn; subagent messages are excluded; `num_turns` from the result overwrites
-  the tally; malformed lines increment `droppedLines` without aborting; the ring
-  evicts in order.
+  the tally; the ring evicts in order; `snapshot()` returns a copy that later
+  mutations do not touch.
 - `describeToolUse` — path relativization, a path outside `repoRoot`, the Bash
   program allowlist (allowlisted and non-allowlisted), the heredoc case
   specifically, control-character and ANSI stripping, unknown tools.
