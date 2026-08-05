@@ -1,19 +1,32 @@
 import { z } from "zod";
 import { sanitizeText } from "./describe-tool-use.js";
 
+const TOOL_USE = "tool_use";
+const TOOL_RESULT = "tool_result";
+const SUCCESS = "success";
+
 const ToolUseBlockSchema = z.object({
-	type: z.literal("tool_use"),
+	type: z.literal(TOOL_USE),
 	id: z.string(),
 	name: z.string(),
 	input: z.unknown(),
 });
 const ToolResultBlockSchema = z.object({
-	type: z.literal("tool_result"),
+	type: z.literal(TOOL_RESULT),
 	tool_use_id: z.string(),
 	is_error: z.boolean().optional(),
 });
-/** Text, thinking, and anything the wire format grows later. */
-const OtherBlockSchema = z.object({ type: z.string() });
+
+/**
+ * Text, thinking, and anything the wire format grows later — but never the two
+ * types above. Graceful growth only needs *unrecognized* types to survive; if
+ * this accepted a malformed `tool_use`, the block would keep its discriminator
+ * while losing its `id` and `name`, and a reducer switching on the type would
+ * match a block with nothing in it.
+ */
+const OtherBlockSchema = z.object({
+	type: z.string().refine((type) => type !== TOOL_USE && type !== TOOL_RESULT),
+});
 
 const ContentBlockSchema = z.union([ToolUseBlockSchema, ToolResultBlockSchema, OtherBlockSchema]);
 export type ToolUseBlock = z.infer<typeof ToolUseBlockSchema>;
@@ -37,24 +50,37 @@ const AssistantEventSchema = MessageEventSchema.extend({ type: z.literal("assist
 const UserEventSchema = MessageEventSchema.extend({ type: z.literal("user") });
 
 /**
+ * `num_turns` feeds `JobProgress.turns`, which the SPA parses with the same
+ * bounds. A value this schema let through but that one forbids would put the
+ * dashboard's poll into a permanent error state, so it is bounded on the way in.
+ */
+const TurnCountSchema = z.number().int().nonnegative().optional();
+
+/**
  * A plain union, not a discriminated one: `result` exists only on the success
- * variant, so `{ subtype: "success" }` with no text must fail validation rather
- * than parse into a success with a missing field. Failing here routes it to the
+ * variant, so `{ subtype: "success" }` with no text fails validation rather than
+ * parsing into a success with a missing field. Failing here routes it to the
  * "exited without a result event" path instead of an internal null check.
+ *
+ * The error variant refuses the success subtype for the same reason. Without
+ * that, `{ subtype: "success", is_error: true }` would parse as an error yet
+ * satisfy `isSuccessResult`, whose narrowing then promises a `result` string
+ * that does not exist. The two variants are disjoint by construction, so their
+ * order in the union is not observable.
  */
 const SuccessResultSchema = z.object({
 	type: z.literal("result"),
-	subtype: z.literal("success"),
+	subtype: z.literal(SUCCESS),
 	result: z.string(),
-	num_turns: z.number().optional(),
+	num_turns: TurnCountSchema,
 });
 const ErrorResultSchema = z.object({
 	type: z.literal("result"),
-	subtype: z.string(),
+	subtype: z.string().refine((subtype) => subtype !== SUCCESS),
 	is_error: z.literal(true),
 	error: z.string().optional(),
 	errors: z.array(z.string()).optional(),
-	num_turns: z.number().optional(),
+	num_turns: TurnCountSchema,
 });
 const ResultEventSchema = z.union([SuccessResultSchema, ErrorResultSchema]);
 
@@ -68,7 +94,7 @@ export type StreamEvent =
 	| ResultEvent;
 
 export function isSuccessResult(event: ResultEvent): event is SuccessResultEvent {
-	return event.subtype === "success";
+	return event.subtype === SUCCESS;
 }
 
 const TypedSchema = z.object({ type: z.string() });
@@ -81,16 +107,25 @@ const TypedSchema = z.object({ type: z.string() });
  * - `invalid` — a type we *do* model whose payload is broken. Counted as a
  *   dropped line, so a corrupt stream is visible in any failure message.
  * - `event` — usable.
+ *
+ * One exception to `invalid`: a broken `system`/`init` is reported `unknown`,
+ * because `system` carries subtypes beyond `init` and only `init` has a model.
+ * The cost is that a corrupt init line goes uncounted and `resolvedModel` stays
+ * null for the run.
  */
 export type ParseOutcome =
 	| { outcome: "event"; event: StreamEvent }
 	| { outcome: "unknown" }
 	| { outcome: "invalid" };
 
-function classify<T extends StreamEvent>(result: z.ZodSafeParseResult<T>): ParseOutcome {
+function classify(result: z.ZodSafeParseResult<StreamEvent>): ParseOutcome {
 	return result.success ? { outcome: "event", event: result.data } : { outcome: "invalid" };
 }
 
+/**
+ * The switch dispatches on an arbitrary string, so a schema added without a case
+ * here silently falls through to `unknown`. A per-type test is the only guard.
+ */
 export function parseStreamEvent(raw: unknown): ParseOutcome {
 	const typed = TypedSchema.safeParse(raw);
 	if (!typed.success) return { outcome: "invalid" };
@@ -123,21 +158,35 @@ const SUBTYPE_PHRASES: ReadonlyMap<string, string> = new Map([
 
 /** Long enough for a real stack-free diagnostic, short enough to store and render. */
 const MESSAGE_LIMIT = 500;
+/** Slack for what sanitizing strips, so a trim never loses visible characters. */
+const RAW_LIMIT = MESSAGE_LIMIT * 4;
+const MAX_ERROR_LINES = 10;
+
+/**
+ * Trims before sanitizing, not after. Sanitizing walks the string character by
+ * character and segments it into graphemes: on a 10 MB payload that is seconds of
+ * a single-threaded server, all to discard everything past 500 characters.
+ */
+function clean(text: string): string {
+	return sanitizeText(text.slice(0, RAW_LIMIT)).slice(0, MESSAGE_LIMIT);
+}
 
 /**
  * Error results carry no final text — `result` is success-only — so the message
  * is assembled from whatever diagnostic fields the event does have. Every part
- * comes from the agent's stdout, so each is sanitized and the whole is bounded.
+ * comes from the agent's stdout, so each is sanitized and the result is bounded
+ * to MESSAGE_LIMIT including the prefix.
  */
 export function errorResultMessage(event: ErrorResultEvent): string {
 	const joined = event.errors
-		?.map(sanitizeText)
+		?.slice(0, MAX_ERROR_LINES)
+		.map(clean)
 		.filter((line) => line !== "")
 		.join("; ");
 	if (joined !== undefined && joined !== "") return joined.slice(0, MESSAGE_LIMIT);
-	const single = event.error === undefined ? "" : sanitizeText(event.error);
-	if (single !== "") return single.slice(0, MESSAGE_LIMIT);
+	const single = event.error === undefined ? "" : clean(event.error);
+	if (single !== "") return single;
 	const phrase = SUBTYPE_PHRASES.get(event.subtype);
 	if (phrase !== undefined) return phrase;
-	return `Agent failed: ${sanitizeText(event.subtype).slice(0, MESSAGE_LIMIT)}`;
+	return `Agent failed: ${clean(event.subtype)}`.slice(0, MESSAGE_LIMIT);
 }

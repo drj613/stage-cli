@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { ErrorResultEvent } from "../generation/stream-events.js";
 import { errorResultMessage, parseStreamEvent } from "../generation/stream-events.js";
+
+function makeErrorResult(overrides: Partial<ErrorResultEvent> = {}): ErrorResultEvent {
+	return { type: "result", subtype: "error_during_execution", is_error: true, ...overrides };
+}
 
 describe("parseStreamEvent", () => {
 	it("parses an init event", () => {
@@ -57,40 +62,91 @@ describe("parseStreamEvent", () => {
 		});
 		expect(parsed.outcome).toBe("event");
 	});
+
+	it("rejects an error result whose subtype claims success", () => {
+		expect(parseStreamEvent({ type: "result", subtype: "success", is_error: true }).outcome).toBe(
+			"invalid",
+		);
+	});
+
+	it("reads a result carrying both text and an error flag as a success", () => {
+		expect(
+			parseStreamEvent({ type: "result", subtype: "success", result: "x", is_error: true }),
+		).toEqual({
+			outcome: "event",
+			event: { type: "result", subtype: "success", result: "x" },
+		});
+	});
+
+	it("rejects a malformed tool_use block instead of degrading it", () => {
+		const cases: unknown[] = [
+			{ type: "tool_use", name: "Read", input: {} },
+			{ type: "tool_use", id: 5, name: "Read", input: {} },
+			{ type: "tool_use", id: "t1", name: 5, input: {} },
+			{ type: "tool_result" },
+		];
+		for (const block of cases) {
+			expect(parseStreamEvent({ type: "assistant", message: { content: [block] } }).outcome).toBe(
+				"invalid",
+			);
+		}
+	});
+
+	it("keeps content block types it does not model", () => {
+		const parsed = parseStreamEvent({
+			type: "assistant",
+			message: { content: [{ type: "text", text: "hi" }, { type: "thinking" }] },
+		});
+		expect(parsed.outcome).toBe("event");
+	});
+
+	it("rejects a turn count the progress schema could not carry", () => {
+		for (const num_turns of [-1, 1.5]) {
+			expect(
+				parseStreamEvent({ type: "result", subtype: "success", result: "x", num_turns }).outcome,
+			).toBe("invalid");
+		}
+	});
+
+	it("treats a broken init event as unknown, since system covers other subtypes", () => {
+		expect(parseStreamEvent({ type: "system", subtype: "init", model: 5 }).outcome).toBe("unknown");
+	});
 });
 
 describe("errorResultMessage", () => {
 	it("prefers the errors array", () => {
-		expect(
-			errorResultMessage({
-				type: "result",
-				subtype: "error_during_execution",
-				is_error: true,
-				errors: ["first", "second"],
-			}),
-		).toBe("first; second");
+		expect(errorResultMessage(makeErrorResult({ errors: ["first", "second"] }))).toBe(
+			"first; second",
+		);
 	});
 
 	it("falls back to the error string", () => {
-		expect(
-			errorResultMessage({
-				type: "result",
-				subtype: "error_during_execution",
-				is_error: true,
-				error: "exploded",
-			}),
-		).toBe("exploded");
+		expect(errorResultMessage(makeErrorResult({ error: "exploded" }))).toBe("exploded");
 	});
 
 	it("falls back to a phrase for a known subtype", () => {
-		expect(errorResultMessage({ type: "result", subtype: "error_max_turns", is_error: true })).toBe(
+		expect(errorResultMessage(makeErrorResult({ subtype: "error_max_turns" }))).toBe(
 			"The agent hit its turn limit.",
 		);
 	});
 
 	it("falls back to the subtype itself when unrecognized", () => {
-		expect(errorResultMessage({ type: "result", subtype: "error_weird", is_error: true })).toBe(
+		expect(errorResultMessage(makeErrorResult({ subtype: "error_weird" }))).toBe(
 			"Agent failed: error_weird",
 		);
+	});
+
+	it("strips escape sequences and newlines from agent-authored text", () => {
+		expect(errorResultMessage(makeErrorResult({ error: "\u001b[31mboom\nnext" }))).toBe(
+			"boom next",
+		);
+	});
+
+	it("bounds the message however large the payload", () => {
+		const long = "x".repeat(2_000_000);
+		expect(errorResultMessage(makeErrorResult({ error: long })).length).toBeLessThanOrEqual(500);
+		expect(
+			errorResultMessage(makeErrorResult({ subtype: long, errors: [long, long] })).length,
+		).toBeLessThanOrEqual(500);
 	});
 });
