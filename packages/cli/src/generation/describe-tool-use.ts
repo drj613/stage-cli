@@ -1,4 +1,5 @@
 import path from "node:path";
+import { TARGET_LIMIT, TOOL_LIMIT } from "@stagereview/types/generation";
 import { z } from "zod";
 import { commandPrograms } from "./bash-commands.js";
 
@@ -17,10 +18,10 @@ const ALLOWED_BASH_PROGRAMS: ReadonlySet<string> = new Set([
 	"rg",
 ]);
 const OPAQUE_COMMAND = "Shell command";
+/** Display budgets, in grapheme clusters. TARGET_LIMIT bounds the same text in code units. */
 const BASH_LIMIT = 80;
 const PATH_LIMIT = 80;
 const PATTERN_LIMIT = 60;
-const TOOL_LIMIT = 40;
 const ELLIPSIS = "…";
 /** Enough for a base letter with a vowel sign and a tone mark; far short of a tower. */
 const MAX_COMBINING_MARKS = 3;
@@ -118,11 +119,27 @@ export function sanitizeText(text: string): string {
 		.trim();
 }
 
-/** Counts grapheme clusters, so a cap splits only where a reader sees a boundary. */
-function cap(text: string, limit: number): string {
+/**
+ * Bounds text by two budgets at once: how much a reader sees (grapheme clusters)
+ * and how much the wire schema counts (UTF-16 code units, `unitLimit`). Whichever
+ * runs out first ends the text.
+ *
+ * Both are needed. Graphemes alone let one flag emoji spend four code units, so 80
+ * of them overrun a 200-unit ceiling and the boundary rejects the whole snapshot.
+ * Code units alone would sever a surrogate pair. Splitting on cluster boundaries
+ * and measuring each cluster's width satisfies both.
+ */
+function cap(text: string, limit: number, unitLimit: number): string {
 	const graphemes = clusters(text);
-	if (graphemes.length <= limit) return text;
-	return `${graphemes.slice(0, limit - 1).join("")}${ELLIPSIS}`;
+	if (graphemes.length <= limit && text.length <= unitLimit) return text;
+	// The ellipsis costs a grapheme and a code unit, so it comes out of both budgets.
+	const units = unitLimit - ELLIPSIS.length;
+	let kept = "";
+	for (const cluster of graphemes.slice(0, limit - 1)) {
+		if (kept.length + cluster.length > units) break;
+		kept += cluster;
+	}
+	return `${kept}${ELLIPSIS}`;
 }
 
 export interface ToolDescription {
@@ -156,7 +173,7 @@ function describeCommand(command: string): string {
 	if (!programs.every((program) => ALLOWED_BASH_PROGRAMS.has(program))) return OPAQUE_COMMAND;
 	const firstLine = sanitizeText(command.split("\n")[0] ?? "");
 	if (firstLine === "" || firstLine.startsWith("#")) return OPAQUE_COMMAND;
-	return cap(firstLine, BASH_LIMIT);
+	return cap(firstLine, BASH_LIMIT, TARGET_LIMIT);
 }
 
 /**
@@ -169,7 +186,9 @@ function describeCommand(command: string): string {
  * `Read` fall through to the default and lose its target.
  */
 export function describeToolUse(name: string, input: unknown, repoRoot: string): ToolDescription {
-	const tool = cap(sanitizeText(name), TOOL_LIMIT);
+	// A tool name is one short ASCII word, so its display budget is its code-unit
+	// ceiling: 40 of either is generous, and no wide name can outgrow the boundary.
+	const tool = cap(sanitizeText(name), TOOL_LIMIT, TOOL_LIMIT);
 	switch (tool) {
 		case "Read":
 		case "Write":
@@ -178,7 +197,11 @@ export function describeToolUse(name: string, input: unknown, repoRoot: string):
 			return {
 				tool,
 				target: parsed.success
-					? cap(sanitizeText(describePath(parsed.data.file_path, repoRoot)), PATH_LIMIT)
+					? cap(
+							sanitizeText(describePath(parsed.data.file_path, repoRoot)),
+							PATH_LIMIT,
+							TARGET_LIMIT,
+						)
 					: "",
 			};
 		}
@@ -191,7 +214,9 @@ export function describeToolUse(name: string, input: unknown, repoRoot: string):
 			const parsed = PatternInput.safeParse(input);
 			return {
 				tool,
-				target: parsed.success ? cap(sanitizeText(parsed.data.pattern), PATTERN_LIMIT) : "",
+				target: parsed.success
+					? cap(sanitizeText(parsed.data.pattern), PATTERN_LIMIT, TARGET_LIMIT)
+					: "",
 			};
 		}
 		default:

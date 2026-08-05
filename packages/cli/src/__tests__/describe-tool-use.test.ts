@@ -1,9 +1,19 @@
+import {
+	ACTIVITY_STATE,
+	ActivityEntrySchema,
+	TARGET_LIMIT,
+	TOOL_LIMIT,
+} from "@stagereview/types/generation";
 import { describe, expect, it } from "vitest";
 import { describeToolUse } from "../generation/describe-tool-use.js";
 
 const REPO_ROOT = "/home/dev/clones/widgets";
 const FLAG = "\u{1F1FA}\u{1F1F8}";
+/** A skin-tone thumbs up: one grapheme, five UTF-16 code units. */
+const THUMB = "\u{1F44D}\u{1F3FD}";
 const SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+/** A high surrogate with no low, or a low with no high — what a naive slice leaves behind. */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
 /** What the caps are measured in: what a reader sees as one character. */
 function graphemes(text: string): number {
@@ -97,7 +107,44 @@ describe("describeToolUse", () => {
 
 	it("caps without splitting a flag into its regional indicators", () => {
 		const { target } = describeToolUse("Grep", { pattern: FLAG.repeat(80) }, REPO_ROOT);
-		expect(target).toBe(`${FLAG.repeat(59)}…`);
+		// A flag costs four code units, so the code-unit budget binds before the
+		// 60-grapheme one — and it still ends on a whole flag.
+		expect(target).toBe(`${FLAG.repeat(Math.floor((TARGET_LIMIT - 1) / FLAG.length))}…`);
+	});
+
+	it("keeps a wide-grapheme path inside the wire schema's code-unit budget", () => {
+		const description = describeToolUse(
+			"Read",
+			{ file_path: `${REPO_ROOT}/${FLAG.repeat(200)}.ts` },
+			REPO_ROOT,
+		);
+		expect(description.target.length).toBeLessThanOrEqual(TARGET_LIMIT);
+		expect(LONE_SURROGATE.test(description.target)).toBe(false);
+		expect(
+			ActivityEntrySchema.safeParse({ ...description, state: ACTIVITY_STATE.RUNNING }).success,
+		).toBe(true);
+	});
+
+	it("keeps a wide-grapheme search pattern inside the code-unit budget", () => {
+		const { target } = describeToolUse("Grep", { pattern: THUMB.repeat(200) }, REPO_ROOT);
+		expect(target.length).toBeLessThanOrEqual(TARGET_LIMIT);
+		expect(LONE_SURROGATE.test(target)).toBe(false);
+	});
+
+	it("keeps a wide-grapheme command inside the code-unit budget", () => {
+		const command = `git log ${FLAG.repeat(200)}`;
+		const { target } = describeToolUse("Bash", { command }, REPO_ROOT);
+		expect(target.length).toBeLessThanOrEqual(TARGET_LIMIT);
+		expect(LONE_SURROGATE.test(target)).toBe(false);
+	});
+
+	it("keeps a wide-grapheme tool name inside the code-unit budget", () => {
+		const description = describeToolUse(FLAG.repeat(200), { nope: 1 }, REPO_ROOT);
+		expect(description.tool.length).toBeLessThanOrEqual(TOOL_LIMIT);
+		expect(LONE_SURROGATE.test(description.tool)).toBe(false);
+		expect(
+			ActivityEntrySchema.safeParse({ ...description, state: ACTIVITY_STATE.RUNNING }).success,
+		).toBe(true);
 	});
 
 	it("gives an unknown tool no target", () => {

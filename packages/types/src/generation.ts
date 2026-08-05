@@ -47,13 +47,20 @@ export const ACTIVITY_STATE = {
 export type ActivityState = (typeof ACTIVITY_STATE)[keyof typeof ACTIVITY_STATE];
 
 /**
- * A generous ceiling on a rendered target, well above the server's own cap. It
- * exists so the boundary rejects something rather than nothing.
+ * Hard ceilings in UTF-16 code units — the unit `z.string().max()` counts.
+ *
+ * The server caps what it renders in *grapheme clusters*, so its display budget
+ * and these are different units: one flag emoji is one grapheme and four code
+ * units. Both sides import these so the producer can bound itself in the same
+ * unit the boundary measures. Let them drift and a single wide-grapheme file path
+ * makes every snapshot unparseable, which parks the dashboard's poll in a
+ * permanent error state — the failure the turn-count bound exists to prevent.
  */
-const TARGET_LIMIT = 200;
+export const TARGET_LIMIT = 200;
+export const TOOL_LIMIT = 40;
 
 export const ActivityEntrySchema = z.object({
-	tool: z.string(),
+	tool: z.string().max(TOOL_LIMIT),
 	/**
 	 * The server emits this collapsed to one line and capped; consumers must not
 	 * assume any particular length. Empty for tools with no meaningful target and

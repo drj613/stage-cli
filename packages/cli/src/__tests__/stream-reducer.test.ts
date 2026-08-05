@@ -1,4 +1,4 @@
-import { ACTIVITY_LIMIT, GENERATION_PHASE } from "@stagereview/types/generation";
+import { ACTIVITY_LIMIT, GENERATION_PHASE, JobProgressSchema } from "@stagereview/types/generation";
 import { describe, expect, it } from "vitest";
 import { StreamReducer } from "../generation/stream-reducer.js";
 
@@ -125,6 +125,18 @@ describe("StreamReducer", () => {
 		);
 		expect(r.result?.subtype).toBe("success");
 		expect(r.snapshot().turns).toBe(17);
+	});
+
+	it("snapshots a wide-grapheme tool call the wire schema accepts", () => {
+		const flag = "\u{1F1FA}\u{1F1F8}";
+		const r = reducer();
+		r.consumeLine(
+			assistantWithTools([
+				{ id: "t1", name: "Read", input: { file_path: `${REPO_ROOT}/${flag.repeat(200)}.ts` } },
+				{ id: "t2", name: "Grep", input: { pattern: flag.repeat(200) } },
+			]),
+		);
+		expect(JobProgressSchema.safeParse(r.snapshot())).toMatchObject({ success: true });
 	});
 
 	it("returns a snapshot later mutations do not touch", () => {

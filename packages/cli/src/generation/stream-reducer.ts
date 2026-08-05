@@ -13,12 +13,6 @@ import {
 	type ResultEvent,
 } from "./stream-events.js";
 
-interface MutableActivityEntry {
-	tool: string;
-	target: string;
-	state: ActivityEntry["state"];
-}
-
 /**
  * Folds raw stdout lines into a progress snapshot.
  *
@@ -28,8 +22,8 @@ interface MutableActivityEntry {
  */
 export class StreamReducer {
 	private readonly phases = new PhaseTracker();
-	private readonly activity: MutableActivityEntry[] = [];
-	private readonly entryByToolUseId = new Map<string, MutableActivityEntry>();
+	private readonly activity: ActivityEntry[] = [];
+	private readonly entryByToolUseId = new Map<string, ActivityEntry>();
 	private resolvedModel: string | null = null;
 	private turns = 0;
 	private dropped = 0;
@@ -49,7 +43,11 @@ export class StreamReducer {
 		return this.dropped;
 	}
 
-	/** The terminal result event, if one has arrived. AgentSession settles on it. */
+	/**
+	 * The last result event seen, or null if none has. Nothing here enforces that it
+	 * is terminal — `consumeLine` keeps folding after it, and a second result event
+	 * replaces this one. AgentSession settles on it.
+	 */
 	get result(): ResultEvent | null {
 		return this.terminalResult;
 	}
@@ -110,7 +108,12 @@ export class StreamReducer {
 		}
 	}
 
-	/** A deep copy — the ring is mutable and callers must not observe it changing. */
+	/**
+	 * Copies each entry, which is enough only because {@link ActivityEntry} is flat.
+	 * The stored entries are mutated in place as their results arrive, so a caller
+	 * holding a snapshot must not see them change. Give an entry a nested field and
+	 * this one level of spread stops being isolation.
+	 */
 	snapshot(): JobProgress {
 		return {
 			startedAt: this.startedAt,
@@ -121,8 +124,13 @@ export class StreamReducer {
 		};
 	}
 
-	/** Appends to the ring, evicting the oldest entry and its correlation key. */
-	private push(entry: MutableActivityEntry): MutableActivityEntry {
+	/**
+	 * Appends to the activity window, first dropping the oldest entry and its
+	 * correlation key if the window is already full. The scan compares object
+	 * identity rather than looking the id up, which is what makes a duplicated
+	 * tool_use id safe: only the key pointing at the entry being dropped goes.
+	 */
+	private push(entry: ActivityEntry): ActivityEntry {
 		if (this.activity.length === ACTIVITY_LIMIT) {
 			const evicted = this.activity.shift();
 			if (evicted !== undefined) {
