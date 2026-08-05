@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { act, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useElapsedSeconds } from "../use-elapsed";
 
@@ -12,6 +12,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	// Unmount before the fake clock goes away: the shared clock must release its
+	// interval while the timer API that created it still exists.
+	cleanup();
 	vi.useRealTimers();
 });
 
@@ -71,6 +74,12 @@ describe("useElapsedSeconds", () => {
 		expect(vi.getTimerCount()).toBe(1);
 	});
 
+	it("ignores a start time that is not a finite number", () => {
+		const { result } = renderHook(() => useElapsedSeconds(Number.NaN));
+		expect(result.current).toBeNull();
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
 	it("stops ticking once the start time goes null", () => {
 		const { result, rerender } = renderHook(({ startedAt }) => useElapsedSeconds(startedAt), {
 			initialProps: { startedAt: START as number | null },
@@ -78,6 +87,42 @@ describe("useElapsedSeconds", () => {
 
 		rerender({ startedAt: null });
 		expect(result.current).toBeNull();
+		expect(vi.getTimerCount()).toBe(0);
+	});
+});
+
+describe("useElapsedSeconds — one shared clock", () => {
+	it("reads the same tick from hooks mounted at different times", () => {
+		const early = renderHook(() => useElapsedSeconds(START));
+		act(() => void vi.advanceTimersByTime(1_500));
+		const late = renderHook(() => useElapsedSeconds(START));
+
+		expect(late.result.current).toBe(early.result.current);
+	});
+
+	it("runs one timer no matter how many subscribers there are", () => {
+		renderHook(() => useElapsedSeconds(START));
+		renderHook(() => useElapsedSeconds(START + 5_000));
+		renderHook(() => useElapsedSeconds(START - 5_000));
+
+		expect(vi.getTimerCount()).toBe(1);
+	});
+
+	it("stops the timer once the last subscriber unmounts", () => {
+		const first = renderHook(() => useElapsedSeconds(START));
+		const second = renderHook(() => useElapsedSeconds(START));
+
+		first.unmount();
+		expect(vi.getTimerCount()).toBe(1);
+
+		second.unmount();
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("runs no timer while every mounted subscriber has no start time", () => {
+		renderHook(() => useElapsedSeconds(null));
+		renderHook(() => useElapsedSeconds(null));
+
 		expect(vi.getTimerCount()).toBe(0);
 	});
 });
