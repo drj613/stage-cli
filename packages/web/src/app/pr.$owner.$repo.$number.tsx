@@ -147,8 +147,9 @@ function FailureDetail({ snapshot }: { snapshot: JobSnapshot }) {
  * The card owns the headline so it reads as an error even when nothing said why;
  * `error` is the detail beneath it. That detail can be a server message, a
  * failed fetch, or a schema dump, so it is folded to one clamped line with the
- * whole text left in the title. Every part of it is sanitized, capped, and
- * path-redacted server-side, so it renders as plain text.
+ * whole text left in the title. None of those sources is trusted — only the
+ * server's own message passes its sanitizer — which is why it goes in as text
+ * for React to escape, and why the length is capped rather than assumed.
  */
 function FailedCard({
 	error,
@@ -187,8 +188,9 @@ function ProgressCard({
 	queuePosition: number | null;
 	snapshot: JobSnapshot | null;
 }) {
-	// Until the child process spawns there is no snapshot to show, so the place
-	// in line is all the card can honestly say.
+	// No snapshot to show yet: no job has been adopted at all, or one has but its
+	// child process hasn't reported. Either way the place in line is all the card
+	// can honestly say.
 	if (snapshot === null || snapshot.progress === null) {
 		const body = queuePosition !== null ? `Queued — ${queuePosition} ahead` : "Chaptering…";
 		return (
@@ -205,7 +207,12 @@ function ProgressCard({
 	return (
 		<div className="space-y-3 rounded-lg border p-4">
 			<div className="flex items-center gap-3">
-				<Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+				{/* A run that finished before the page navigated away is done, not hung. */}
+				{snapshot.isRunning ? (
+					<Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+				) : (
+					<Check className="size-4 shrink-0 text-muted-foreground" />
+				)}
 				<div className="min-w-0 flex-1 space-y-0.5">
 					<p className="truncate font-medium text-sm">{prLabel}</p>
 					<ProgressSummary {...snapshot} />

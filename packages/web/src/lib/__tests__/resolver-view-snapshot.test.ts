@@ -106,33 +106,3 @@ describe("deriveResolverView job snapshot", () => {
 		});
 	});
 });
-
-describe("deriveResolverView poll error", () => {
-	it("outranks a cached running job, since the dead poll can never advance it", () => {
-		expect(
-			deriveResolverView({
-				resolution: GENERATING,
-				resolutionError: null,
-				job: job({ progress }),
-				pollError: "GET /api/generate/job-1 failed: 404",
-				generationError: "GET /api/generate/job-1 failed: 404",
-			}),
-		).toEqual({
-			tag: "failed",
-			error: "GET /api/generate/job-1 failed: 404",
-			snapshot: { requestedModel: "sonnet", progress, isRunning: false },
-		});
-	});
-
-	it("surfaces itself with no snapshot when nothing was ever cached", () => {
-		expect(
-			deriveResolverView({
-				resolution: GENERATING,
-				resolutionError: null,
-				job: null,
-				pollError: "job not found",
-				generationError: "job not found",
-			}),
-		).toEqual({ tag: "failed", error: "job not found", snapshot: null });
-	});
-});

@@ -64,7 +64,15 @@ export class JobManager {
 	private idle: Promise<void> = Promise.resolve();
 	private resolveIdle: () => void = () => {};
 
-	constructor(private readonly runner: JobRunner) {}
+	/**
+	 * `now` stamps the end of every run, so it must be the same clock the runner
+	 * reads for `startedAt` — two clocks can hand the UI a duration neither of
+	 * them would recognize.
+	 */
+	constructor(
+		private readonly runner: JobRunner,
+		private readonly now: () => number = Date.now,
+	) {}
 
 	enqueue(request: JobRequest): string {
 		const job: Job = {
@@ -191,7 +199,7 @@ export class JobManager {
 				// path is deliberately left out.
 				console.error(`[stage:generate] ${current.prUrl} failed: ${current.error}`);
 			}
-			this.recordEnd(current, Date.now());
+			this.recordEnd(current, this.now());
 			this.evictTerminal();
 			job = this.queue.shift();
 		}

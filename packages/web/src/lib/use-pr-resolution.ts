@@ -66,10 +66,12 @@ export interface PrResolutionMachine {
 	/** Explicit user action — Regenerate on stale, Retry on failed. */
 	generate: () => void;
 	/**
-	 * Why the job poll stopped, if it did. The poll doesn't retry, so this is
-	 * terminal for the snapshot beside it — see deriveResolverView.
+	 * Why the job poll stopped, if it did. The poll doesn't retry, so it stays
+	 * stopped until something refetches it — a window focus, or Retry. See
+	 * deriveResolverView for what the page makes of that.
 	 */
 	pollError: string | null;
+	/** startError, the job's own error, or the resolution's last reported failure, in that precedence. */
 	generationError: string | null;
 }
 
@@ -166,14 +168,13 @@ export function usePrResolution(address: PrAddress): PrResolutionMachine {
 		job: job ?? null,
 		runId: job?.runId ?? resolvedRunId,
 		generate: () => {
-			// The poll never retries, so a dead one stays dead — and the server
-			// dedupes on the PR, so this Retry may well hand back the same jobId and
-			// land on the same key. Without the reset the button would look inert.
+			// A stopped poll needs something to refetch it, and the server dedupes on
+			// the PR, so this Retry may well hand back the same jobId and land on the
+			// same key. Without the reset the button would look inert.
 			if (jobId !== null) void queryClient.resetQueries({ queryKey: jobQueryKey(jobId) });
 			mutate();
 		},
 		pollError: pollError?.message ?? null,
-		generationError:
-			startError?.message ?? pollError?.message ?? job?.error ?? resolvedFailureError,
+		generationError: startError?.message ?? job?.error ?? resolvedFailureError,
 	};
 }

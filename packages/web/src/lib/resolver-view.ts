@@ -42,9 +42,9 @@ export interface ResolverViewInput {
 	resolution: PrResolution | undefined;
 	resolutionError: unknown;
 	job: GenerationJob | null;
-	/** The job poll's own failure message, kept separate because it invalidates the snapshot it arrives with. */
+	/** The job poll's own failure message, kept separate because it says nothing about the job it arrives with. */
 	pollError: string | null;
-	/** Precomputed by usePrResolution: startError, pollError, job.error, or the resolution's own reported error, in that precedence. */
+	/** Precomputed by usePrResolution: startError, job.error, or the resolution's own reported error, in that precedence. */
 	generationError: string | null;
 }
 
@@ -68,12 +68,17 @@ export function deriveResolverView({
 		return { tag: "loading" };
 	}
 
-	// A poll that errored is a dead end: the job query doesn't retry, so the
-	// cached snapshot beside it can never advance again. Rendering it as live
-	// progress would spin forever with nothing to click, so the error outranks
-	// the job it arrived with — and the snapshot goes along frozen, since a
-	// failed poll is no evidence the job is still moving.
-	if (pollError !== null) {
+	// A poll that errored on a job with work left to do leaves nothing to report
+	// that job again: the query doesn't retry, so it stays dead until a window
+	// focus or Retry refetches it, and neither is guaranteed. Rendering it as live
+	// progress would spin with nothing to click, so the error outranks it — and
+	// the snapshot goes along frozen, since a failed poll is no evidence the job
+	// is still moving.
+	//
+	// A job already terminal in cache is the exception: it has nothing left to
+	// advance, and its own recorded outcome — success or its real cause of death —
+	// stays the truth no matter what the transport does afterwards.
+	if (pollError !== null && (job === null || !isTerminalJobStatus(job.status))) {
 		return {
 			tag: "failed",
 			error: pollError,

@@ -20,12 +20,12 @@ function makeProgress(): JobProgress {
  * A manager whose runner reports one snapshot and then settles the way `outcome`
  * says, mirroring what AgentSession does on each of its terminal paths.
  */
-async function runOnce(outcome: { fail?: string; reportProgress?: boolean }) {
+async function runOnce(outcome: { fail?: string; reportProgress?: boolean; now?: () => number }) {
 	const manager = new JobManager(async (_job, onProgress) => {
 		if (outcome.reportProgress !== false) onProgress(makeProgress());
 		if (outcome.fail !== undefined) throw new Error(outcome.fail);
 		return "run-1";
-	});
+	}, outcome.now);
 	const id = manager.enqueue({
 		prUrl: "https://github.com/o/r/pull/1",
 		repoRoot: REPO_ROOT,
@@ -56,6 +56,12 @@ describe("JobManager end time", () => {
 		const job = await runOnce({ fail: "agent timed out after 900000ms" });
 
 		expect(() => JobProgressSchema.parse(job?.progress)).not.toThrow();
+	});
+
+	it("reads the clock it was given, so a run's two timestamps come from one source", async () => {
+		const job = await runOnce({ now: () => STARTED_AT + 42_000 });
+
+		expect(job?.progress?.endedAt).toBe(STARTED_AT + 42_000);
 	});
 
 	it("leaves progress null for a job whose process never reported", async () => {
