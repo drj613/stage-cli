@@ -25,6 +25,13 @@ describe("formatModelLabel", () => {
 		expect(formatModelLabel(GENERATION_MODEL.OPUS, "custom-endpoint-01")).toBe("Opus");
 	});
 
+	it("drops a version that doesn't fit the label's budget", () => {
+		expect(formatModelLabel(GENERATION_MODEL.SONNET, `claude-sonnet-${"9".repeat(60)}`)).toBe(
+			"Sonnet",
+		);
+		expect(formatModelLabel(GENERATION_MODEL.SONNET, "claude-sonnet-1-2-3-4-5-6-7")).toBe("Sonnet");
+	});
+
 	it("falls back to the requested alias for an empty id", () => {
 		expect(formatModelLabel(GENERATION_MODEL.OPUS, "")).toBe("Opus");
 	});

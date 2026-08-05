@@ -14,10 +14,16 @@ function StateIcon({ state }: { state: ActivityEntry["state"] }) {
 }
 
 /**
- * The agent's recent tool calls, oldest first. `flex-col-reverse` over a
- * reversed list keeps the newest entry pinned to the bottom edge without
- * scripted scrolling, and min-w-0 + truncate stop a long path from widening
- * the card.
+ * The agent's recent tool calls: oldest at the top on screen, newest first in
+ * the DOM. `flex-col-reverse` is what inverts the two, and it earns that
+ * confusion — a reverse-column scroll box starts scrolled to its own bottom, so
+ * the newest row stays visible with no scripted scrolling. Assistive tech
+ * follows the DOM and so reads newest first, which is the better order for a
+ * live log anyway.
+ *
+ * A long path is contained by min-w-0 + truncate on the target and clipped by
+ * overflow-hidden on the row, which is what stops a 40-character tool name
+ * (`shrink-0`, so it cannot truncate) from spilling out sideways.
  *
  * Deliberately not a live region: the poll rewrites these rows every second or
  * two, which a screen reader would read as a stream of interruptions.
@@ -27,9 +33,9 @@ export function ActivityList({ activity }: { activity: readonly ActivityEntry[] 
 	return (
 		<ul className="flex max-h-40 flex-col-reverse gap-1 overflow-y-auto">
 			{[...activity].reverse().map((entry, index) => (
-				// A sliding window with no stable id: an eviction shifts every position,
-				// so the key groups a row's text rather than tracking an entry. Safe
-				// while nothing here animates on identity.
+				// A sliding window with no stable id, and an eviction shifts every
+				// position, so no key can follow an entry across polls. The index is
+				// honest about that, and safe while nothing here animates on identity.
 				// biome-ignore lint/suspicious/noArrayIndexKey: no stable id exists on the wire
 				<li key={index} className="flex items-center gap-2 overflow-hidden text-xs">
 					<StateIcon state={entry.state} />
