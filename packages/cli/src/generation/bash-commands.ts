@@ -84,26 +84,48 @@ function heredocDelimiter(line: string): string | undefined {
 	return undefined;
 }
 
+interface HeredocScan {
+	/** The command with every heredoc body removed. */
+	readonly commands: string;
+	/** The delimiter of every heredoc the command opens, in order. */
+	readonly delimiters: string[];
+}
+
 /**
- * Drops heredoc bodies. Chapter JSON is written through a heredoc, and its
- * contents must never be mistaken for commands the agent ran.
+ * Separates the commands from the heredoc bodies they carry. Chapter JSON is
+ * written through a heredoc, and its contents must never be mistaken for commands
+ * the agent ran — nor may an opener inside a body count as one.
  *
  * Terminator lines are matched trimmed for every heredoc, where bash only strips
  * leading whitespace for `<<-`. That errs toward ending the body early, which at
  * worst adds phantom programs.
  */
-function stripHeredocBodies(command: string): string {
+function scanHeredocs(command: string): HeredocScan {
 	const kept: string[] = [];
+	const delimiters: string[] = [];
 	let delimiter: string | undefined;
-	for (const line of command.split("\n")) {
+	for (const line of command.replace(/\r\n/g, "\n").split("\n")) {
 		if (delimiter !== undefined) {
 			if (line.trim() === delimiter) delimiter = undefined;
 			continue;
 		}
 		kept.push(line);
 		delimiter = heredocDelimiter(line);
+		if (delimiter !== undefined) delimiters.push(delimiter);
 	}
-	return kept.join("\n");
+	return { commands: kept.join("\n"), delimiters };
+}
+
+/**
+ * The delimiter of every heredoc the command actually opens.
+ *
+ * A mention of an opener is not an opener: `rg "<< 'AGENT_EOF'"` searches for that
+ * text, and `# see <<EOF` is a comment. Callers that key off a specific delimiter
+ * — the chapter JSON is written through `<< 'AGENT_EOF'` — need that distinction,
+ * which a substring match on the raw command cannot make.
+ */
+export function heredocDelimiters(command: string): string[] {
+	return scanHeredocs(command).delimiters;
 }
 
 /** The words of each command in the text, split on separators found outside quotes. */
@@ -151,7 +173,7 @@ function splitSegments(text: string): string[][] {
  */
 export function commandInvocations(command: string): CommandInvocation[] {
 	const invocations: CommandInvocation[] = [];
-	for (const words of splitSegments(stripHeredocBodies(command.replace(/\r\n/g, "\n")))) {
+	for (const words of splitSegments(scanHeredocs(command).commands)) {
 		let [program, ...args] = words;
 		while (program !== undefined && (ASSIGNMENT.test(program) || REDIRECTION.test(program))) {
 			[program, ...args] = args;

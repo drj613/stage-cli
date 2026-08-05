@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commandPrograms } from "../generation/bash-commands.js";
+import { commandPrograms, heredocDelimiters } from "../generation/bash-commands.js";
 
 const IMPORT_LINE = "stagereview import f";
 
@@ -63,5 +63,35 @@ describe("heredoc handling", () => {
 	it("reads a backslash-escaped delimiter whole", () => {
 		const command = ["cat <<\\EOF", "rg secret", "EOF", IMPORT_LINE].join("\n");
 		expect(commandPrograms(command)).toEqual(["cat", "stagereview"]);
+	});
+});
+
+describe("heredocDelimiters", () => {
+	it("reports the delimiter of a quoted opener", () => {
+		const command = [`cat > f << 'AGENT_EOF'`, '{ "chapters": [] }', "AGENT_EOF"].join("\n");
+		expect(heredocDelimiters(command)).toEqual(["AGENT_EOF"]);
+	});
+
+	it("reports the delimiter of an unquoted opener", () => {
+		expect(heredocDelimiters("cat > f <<AGENT_EOF")).toEqual(["AGENT_EOF"]);
+	});
+
+	it("reports nothing for a quoted mention of an opener", () => {
+		expect(heredocDelimiters(`rg "<< 'AGENT_EOF'" src`)).toEqual([]);
+		expect(heredocDelimiters(`echo "<< 'AGENT_EOF'"`)).toEqual([]);
+	});
+
+	it("reports nothing for a bare mention of a delimiter", () => {
+		expect(heredocDelimiters("rg AGENT_EOF src")).toEqual([]);
+	});
+
+	it("reports every heredoc a command opens, and none from inside a body", () => {
+		const command = ["cat <<'A'", "cat <<'NOT_A_HEREDOC'", "A", "cat <<'B'", "B"].join("\n");
+		expect(heredocDelimiters(command)).toEqual(["A", "B"]);
+	});
+
+	it("reports nothing for a herestring or a commented opener", () => {
+		expect(heredocDelimiters('cat <<< "foo"')).toEqual([]);
+		expect(heredocDelimiters("git status # see <<EOF")).toEqual([]);
 	});
 });

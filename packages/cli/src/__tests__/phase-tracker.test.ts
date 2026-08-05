@@ -88,4 +88,31 @@ describe("PhaseTracker", () => {
 		tracker.observeToolUse("t1", "Read", { file_path: "/repo/src/a.ts" });
 		expect(tracker.phase).toBe(GENERATION_PHASE.PREP);
 	});
+
+	it("does not advance to write when a search quotes the whole heredoc opener", () => {
+		const tracker = new PhaseTracker();
+		tracker.observeToolUse("t1", "Bash", { command: `rg "<< 'AGENT_EOF'" src` });
+		expect(tracker.phase).toBe(GENERATION_PHASE.PREP);
+	});
+
+	it("advances to write on an unquoted heredoc opener", () => {
+		const tracker = new PhaseTracker();
+		tracker.observeToolUse("t1", "Bash", { command: 'cat > "$AGENT_OUTPUT" <<AGENT_EOF' });
+		expect(tracker.phase).toBe(GENERATION_PHASE.WRITE);
+	});
+
+	it("does not advance to write for a file that merely mentions the output name", () => {
+		const tracker = new PhaseTracker();
+		tracker.observeToolUse("t1", "Write", { file_path: "/repo/docs/notes-stage-agent-output.md" });
+		tracker.observeToolUse("t2", "Edit", { file_path: "/repo/src/stage-agent-outputs/a.ts" });
+		expect(tracker.phase).toBe(GENERATION_PHASE.PREP);
+	});
+
+	it("advances when the earlier of two concurrent preps is the one that succeeds", () => {
+		const tracker = new PhaseTracker();
+		tracker.observeToolUse("t1", "Bash", { command: PREP_COMMAND });
+		tracker.observeToolUse("t2", "Bash", { command: PREP_COMMAND });
+		tracker.observeToolResult("t1", false);
+		expect(tracker.phase).toBe(GENERATION_PHASE.ANALYZE);
+	});
 });
