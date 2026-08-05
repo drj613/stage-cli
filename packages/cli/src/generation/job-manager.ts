@@ -6,7 +6,9 @@ import {
 	isTerminalJobStatus,
 	JOB_STATUS,
 } from "@stagereview/types/generation";
-import { z } from "zod";
+import { parseRunnerOutput } from "./run-id.js";
+
+export { parseRunnerOutput } from "./run-id.js";
 
 export interface JobRequest {
 	prUrl: string;
@@ -132,27 +134,10 @@ const STDERR_TAIL_LINES = 5;
 /** Nobody is at the keyboard to answer tool prompts, and this daemon only ever runs on the user's own machine against their own clones. */
 const PERMISSION_MODE = "bypassPermissions";
 
-const runIdSchema = z.string().uuid();
-
 /** Last ~5 lines of stderr, formatted for appending to an error message. */
 function stderrTail(stderr: string): string {
 	const lines = stderr.trim().split("\n").slice(-STDERR_TAIL_LINES);
 	return lines.length > 0 && lines[0] !== "" ? `\n${lines.join("\n")}` : "";
-}
-
-/**
- * The runId the agent was told to print as its last line. Throws when the agent
- * ended on anything else — a missing or malformed runId means the run didn't
- * land in the database, so failing loudly beats surfacing a bogus link.
- */
-export function parseRunnerOutput(stdout: string): string {
-	const lines = stdout.trim().split("\n");
-	const lastLine = lines[lines.length - 1]?.trim() ?? "";
-	const parsed = runIdSchema.safeParse(lastLine);
-	if (!parsed.success) {
-		throw new Error(`Agent did not return a runId. Last output: ${lastLine || "(empty)"}`);
-	}
-	return parsed.data;
 }
 
 /**
