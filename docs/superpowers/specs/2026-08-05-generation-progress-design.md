@@ -60,17 +60,43 @@ must not fail a run.
 
 Today the runId is the last line of stdout. Under `stream-json`, stdout is JSON,
 so the runId moves into the `result` event's `result` field (the agent's final
-assistant text). `parseRunnerOutput` keeps its current signature and contract but
-is fed that text instead of raw stdout.
+assistant text). `parseRunnerOutput` keeps its current signature but is fed that
+text instead of raw stdout.
+
+**Its error message changes.** Today it throws ``Agent did not return a runId.
+Last output: ${lastLine}`` (`packages/cli/src/generation/job-manager.ts:154`).
+That was tolerable when the last line was a runId or nothing; under stream-json
+it is the tail of the agent's final prose, which can quote source or file
+contents. Control-character stripping does not make that content appropriate to
+surface. The message becomes a flat `Agent did not return a valid runId.` with
+no echo of the line.
 
 This is the single place the change can silently break generation, so it is
 covered by a test against a recorded stream-json fixture.
 
 **The `result` field exists only on the success variant.** Error variants
 (`error_max_turns`, `error_during_execution`) carry no final text, so "reject
-with the result's message" is not a definition. The schema models `result`,
-`error`, and `errors` as optional, and `errorResultMessage(event)` takes the
-first non-empty of:
+with the result's message" is not a definition.
+
+The schema is a **discriminated union on `subtype`**, not a bag of optional
+fields:
+
+```ts
+z.discriminatedUnion("subtype", [
+  z.object({ subtype: z.literal("success"), result: z.string(), num_turns: z.number(), … }),
+  z.object({ subtype: z.string(), is_error: z.literal(true), error: z.string().optional(),
+             errors: z.array(z.string()).optional(), … }),
+])
+```
+
+Making `result` universally optional would admit `{ subtype: "success" }` with
+no final text — a state the protocol cannot produce, which the code would then
+have to null-check or assert its way around. Under the union, that payload
+simply fails validation: `droppedLines` increments, no result is recorded, and
+settlement reports "exited without a result event." No assertion, no internal
+null handling.
+
+`errorResultMessage(event)` takes the first non-empty of:
 
 1. `errors` joined with `; `, sanitized
 2. `error`, sanitized
@@ -98,7 +124,8 @@ Inputs are recorded; `close` decides.
 
 | Input | Effect |
 | --- | --- |
-| `child.on("error")` (spawn failed, or signal delivery failed) | record the error; do **not** settle — Node emits `close` after a failed spawn |
+| `child.on("spawn")` | set `spawned = true` — the process exists from here on |
+| `child.on("error")` | record the error; do **not** settle — Node emits `close` after a failed spawn |
 | valid `result` event | record it; do **not** settle |
 | duplicate `result` event | ignore the second |
 | timeout fires | record `terminationCause = "timeout"`, send `SIGTERM`, arm the escalation timer; do **not** settle |
@@ -119,10 +146,23 @@ Precedence at `close`, first match wins:
 
 Every terminal path clears both the timeout and escalation timers.
 
-The one exception to settle-on-close: if `error` fires and no `close` follows
-within a short grace period, `run()` rejects anyway. A process that never closes
-would otherwise wedge the queue permanently, which is the exact hazard the
-settle-on-close rule exists to prevent.
+**The no-close backstop is gated on `spawned`.** `error` does not only mean
+"spawn failed" — Node also emits it when signal delivery fails, which happens
+*after* a live process exists. Rejecting on that would hand the queue to the next
+job while the previous child is still running against the worktree, reintroducing
+the exact hazard settle-on-close prevents.
+
+| `error` with no `close` | Behavior |
+| --- | --- |
+| `spawned === false` | no process was ever created, so nothing can be holding the worktree — reject after the grace period |
+| `spawned === true` | re-attempt termination (SIGKILL), and if `close` still never arrives, **stay pending** and log the condition to stderr on each attempt |
+
+The second row deliberately wedges this job's slot rather than releasing it. A
+blocked queue is a visible, recoverable annoyance; two agents writing one
+worktree is silent corruption. The UI keeps showing the job as running, which is
+the truth. In practice SIGKILL is undeliverable only to an uninterruptible or
+already-reaped process, so this path should be unreachable — it exists so that
+being wrong about that is loud instead of destructive.
 
 Timeout is handled here rather than through `spawn`'s `timeout` option because
 Node documents that a kill signal does not guarantee termination, and because the
@@ -190,10 +230,11 @@ backtick, `&&`, `||`, `;`, or `|`, with an optional `VAR=` immediately before a
 a general one by hand is out of scope, and pulling in a shell-parsing library for
 two commands is not worth the dependency.
 
-Write-phase detection keys on the literal heredoc delimiter `AGENT_EOF` appearing
-in the command, or a `Write` tool targeting a `stage-agent-output*` path. The
-delimiter is a distinctive fixed token the skill specifies verbatim, which makes
-it a more reliable signal than trying to parse the redirect.
+Write-phase detection keys on the **heredoc opener** — `<< 'AGENT_EOF'`, the
+redirect operator and quoted delimiter together — or a `Write` tool targeting a
+`stage-agent-output*` path. Matching a bare occurrence of `AGENT_EOF` would be
+wrong: `rg AGENT_EOF` during the analyze phase would advance the rail to Write
+without anything having been written.
 
 **Tests use commands copied verbatim from `SKILL.md`**, not simplified
 `stagereview prep` fixtures — a fixture that omits the `$(…)` wrapper would pass
@@ -240,6 +281,11 @@ New, all under `packages/cli/src/generation/`:
   `snapshot()` returns a deep copy: the activity ring is mutable and reducer-
   owned, and handing `JobManager` a live reference would let it observe entries
   changing underneath a response it has already begun serializing.
+- **`bash-commands.ts`** — pure. `commandPrograms(command: string): string[]`,
+  the command-position recognizer. Shared by `phase-tracker.ts` (does this
+  command run `stagereview prep`?) and `describe-tool-use.ts` (are all of this
+  command's programs allowlisted?), so the two cannot disagree about what a
+  command invokes.
 - **`phase-tracker.ts`** — the pure phase mapping described above.
 - **`describe-tool-use.ts`** — `(name, input) → { tool, target }`.
 
@@ -270,13 +316,20 @@ user's code, so both are constrained before they reach a UI or a terminal.
 | `Glob` / `Grep` | the `pattern`, capped at 60 characters |
 | anything else | empty — the tool name alone |
 
-**Bash program allowlist.** The command's first token is matched against a known
-set — `stagereview`, `git`, `gh`, `mktemp`, `cat`, `which`, `rg`. An allowlisted
-program renders its first command line capped at 80 characters; anything else
-renders as the literal string `Shell command` with no detail. The agent's
-vocabulary in this workflow is small and known, so the allowlist keeps the useful
-cases (`gh pr diff 42`, `stagereview prep --pr 42`) while bounding an unexpected
+**Bash program allowlist.** The programs the command invokes are matched against
+a known set — `stagereview`, `git`, `gh`, `mktemp`, `cat`, `which`, `rg`. If
+every program it invokes is allowlisted, the entry renders the command's first
+line capped at 80 characters; otherwise it renders the literal string
+`Shell command` with no detail. The agent's vocabulary in this workflow is small
+and known, so the allowlist keeps the useful cases while bounding an unexpected
 command to a label.
+
+**Extracting those programs reuses the command-position recognizer from Phases.**
+A naive first-token check would be wrong in exactly the cases that matter: the
+first token of `PREP_FILE=$(stagereview prep)` is `PREP_FILE=$(stagereview`, so
+prep — one of the two commands this feature most wants to show — would render as
+`Shell command`, contradicting the examples above. One primitive, used for both
+phase detection and display, keeps the two from drifting.
 
 First-line-only matters for `cat`: the heredoc that writes chapter JSON would
 otherwise dump agent-authored prose about the user's code into the UI. The entry
@@ -357,10 +410,17 @@ show.
 
 ## Routes
 
-- `GET /api/generate/:jobId` — unchanged shape plus `prUrl` and `progress`.
+- `GET /api/generate/:jobId` — unchanged shape plus `prUrl`, `requestedModel`,
+  and `progress`.
 - `GET /api/generate` — **new**. Returns `{ jobs: GenerationJob[] }` for every
   non-terminal job. One request serves the whole dashboard regardless of row
   count. Backed by a new `JobManager.activeJobs()`.
+
+The list response gets its own exported schema,
+`ActiveGenerationJobsSchema = z.object({ jobs: z.array(GenerationJobSchema) })`,
+in the types package. `useActiveJobs` parses through it, matching how every other
+hook validates its HTTP boundary — a new endpoint should not be the one place the
+client trusts the wire.
 
 `POST /api/generate` is unchanged.
 
@@ -473,7 +533,9 @@ the change:
 - spawn `error` (missing binary) rejects rather than throwing an unhandled
   event — the stub emits `error` **followed by** `close`, matching Node's
   documented behavior, and the run must settle once
-- `error` with no `close` following rejects via the grace-period backstop
+- **pre-spawn** `error` with no `close` rejects via the grace-period backstop
+- **post-spawn** `error` with no `close` stays pending and does not release the
+  queue, re-attempting SIGKILL
 - exit by a signal we did not send rejects naming the signal
 - zero exit with no result event rejects
 - valid success result followed by a non-zero close rejects
@@ -486,6 +548,9 @@ the change:
   signal termination
 - an error `result` with no `result` field produces a message from `errors` /
   `error` / the subtype phrase, in that order
+- `{ subtype: "success" }` with no `result` fails the discriminated union,
+  increments `droppedLines`, and settles as "exited without a result event"
+- `parseRunnerOutput`'s failure message does not contain the offending line
 
 **Pure logic units**
 
@@ -493,15 +558,20 @@ the change:
   `AGENT_OUTPUT=$(mktemp …)` + `cat … << 'AGENT_EOF'` block **verbatim from
   `SKILL.md`**; advances only on a *successful* prep `tool_result` matched by
   `tool_use_id`; a failed prep stays in Prep; does not fire on a command that
-  merely mentions `stagereview import` in an `echo` or a heredoc body; never
+  merely mentions `stagereview import` in an `echo` or a heredoc body; requires
+  the `<< 'AGENT_EOF'` opener so `rg AGENT_EOF` does not advance to Write; never
   rewinds; unknown tools leave the phase alone.
 - `StreamReducer` — `consumeLine` on malformed JSON increments `droppedLines`
   without aborting; one assistant message with parallel tool calls counts as one
   turn; subagent messages are excluded; `num_turns` from the result overwrites
   the tally; the ring evicts in order; `snapshot()` returns a copy that later
   mutations do not touch.
+- `commandPrograms` — `PREP_FILE=$(stagereview prep)`, the multiline
+  `mktemp`/`cat` block, pipelines and `&&` chains, and a heredoc body that
+  mentions a program name without invoking it.
 - `describeToolUse` — path relativization, a path outside `repoRoot`, the Bash
-  program allowlist (allowlisted and non-allowlisted), the heredoc case
+  program allowlist (`PREP_FILE=$(stagereview prep)` renders its command line,
+  a non-allowlisted program renders `Shell command`), the heredoc case
   specifically, control-character and ANSI stripping, unknown tools.
 
 **Web** — one `resolver-view` case per new variant, and a `useActiveJobs` test
