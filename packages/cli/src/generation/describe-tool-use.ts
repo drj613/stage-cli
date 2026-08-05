@@ -160,16 +160,27 @@ function describePath(filePath: string, repoRoot: string): string {
 	return relative;
 }
 
+/** Ends a path token. `:` and `,` separate the entries of a PATH list or an argument list. */
+const PATH_END = String.raw`[^\s'"|;&<>(),:]`;
 /**
- * An absolute path inside a larger string: a `/` that begins a word, up to the
- * next blank, quote, or shell operator. The lookbehind is what keeps a URL whole
- * — `https://github.com/o/r/pull/7` is worth displaying and holds no secret,
- * while `//github.com` reduced to a basename would display as `github.com`.
+ * A URL keeps `:` so a port and an ESM frame's `:3:1` stay attached, and is
+ * matched ahead of a bare path so `https://github.com/o/r/pull/7` is consumed
+ * whole rather than having its `/o/r/pull/7` reduced to `7`.
  */
-const ABSOLUTE_PATH = /(?<![\w:/])\/[^\s'"|;&<>()]+/g;
+const SCHEME_URL = String.raw`[A-Za-z][A-Za-z0-9+.\-]*:\/\/[^\s'"|;&<>(),]*`;
+/**
+ * What may precede an absolute path: a separator, optionally followed by a short
+ * flag the path is glued onto (`cc -I/usr/include`). Requiring one is what keeps a
+ * *relative* path intact — in `src/a.ts` and `../lib/b.ts` the `/` follows a
+ * name character, and rewriting from there yields `srca.ts`, a filename that reads
+ * as real and never existed. A leading `.` or `~` is excluded for the same reason.
+ */
+const PATH_START = String.raw`(?<=(?:^|[\s'"=|;&<>(),:])(?:-{1,2}[A-Za-z][\w-]{0,15})?)`;
+const REDACTABLE = new RegExp(`${SCHEME_URL}|${PATH_START}\\/${PATH_END}+`, "g");
+const FILE_SCHEME = /^file:\/\//i;
 
 /**
- * Rewrites every absolute path in display text the way a file target is
+ * Rewrites the absolute posix paths in display text the way a file target is
  * rewritten. The agent runs `git -C <clone>`, `mktemp`, and `stagereview import
  * <tmpdir>/chapters.json` as a matter of course, so a command line quoted
  * verbatim publishes the user's home directory — and the clone root that the
@@ -178,10 +189,22 @@ const ABSOLUTE_PATH = /(?<![\w:/])\/[^\s'"|;&<>()]+/g;
  * A token-level rewrite is enough because this is display text: nothing
  * downstream executes or resolves it. `AgentSession` runs the stderr it puts on
  * the wire through this too — a resolver error or stack trace names paths far more
- * often than a tool target does.
+ * often than a tool target does, and because `claude` is a Node ESM program those
+ * name the entry point as a `file://` URL, handled below.
+ *
+ * Posix only: `C:\Users\…`, `C:/Users/…`, and UNC `\\server\share` are left
+ * untouched, and on Windows `repoRoot` would not match either, so this is a no-op
+ * there. The CLI's own paths are posix in every supported install, so that gap is
+ * accepted rather than covered — do not read this as sanitizing arbitrary input.
  */
 export function redactPaths(text: string, repoRoot: string): string {
-	return text.replace(ABSOLUTE_PATH, (match) => describePath(match, repoRoot));
+	return text.replace(REDACTABLE, (match) => {
+		if (match.startsWith("/")) return describePath(match, repoRoot);
+		const filePath = match.replace(FILE_SCHEME, "");
+		// A non-file scheme, or `file://host/share` — neither names a local path.
+		if (filePath === match || !filePath.startsWith("/")) return match;
+		return describePath(filePath, repoRoot);
+	});
 }
 
 /**

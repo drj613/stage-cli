@@ -294,15 +294,19 @@ export class AgentSession {
 	 * cap so a shortened path spends its saving on message text. The tee goes to the
 	 * daemon's own terminal, where the operator owns the paths already and needs them
 	 * whole: an out-of-clone failure reduced to a basename is undiagnosable, so this
-	 * is the full-fidelity copy. Sanitizing is not part of that split — an escape
-	 * sequence reaching a terminal is the hazard `sanitizeText` exists for.
+	 * keeps full *paths* — it is still capped to the same line length. Sanitizing is
+	 * not part of that split — an escape sequence reaching a terminal is the hazard
+	 * `sanitizeText` exists for.
+	 *
+	 * Emptiness is checked on both forms, because redaction can consume a whole line:
+	 * `basename("//")` is `""`, and a blank tail entry is a blank line in `job.error`.
 	 */
 	private recordStderr(line: string): void {
 		const clean = sanitizeText(line.slice(0, STDERR_RAW_LIMIT));
 		if (clean === "") return;
 		const teed = clean.slice(0, STDERR_LINE_LIMIT);
 		const redacted = redactPaths(clean, this.options.job.repoRoot).slice(0, STDERR_LINE_LIMIT);
-		this.stderrTail.push(redacted);
+		if (redacted !== "") this.stderrTail.push(redacted);
 		if (this.stderrTail.length > STDERR_TAIL_LINES) this.stderrTail.shift();
 		if (this.stderrTeed < STDERR_TEE_LINES) {
 			this.stderrTeed += 1;

@@ -32,7 +32,10 @@ export interface GenerateRoutesEnv {
 	releaseRunner(): void;
 	/** Pushes a progress snapshot from inside the currently running job. */
 	pushProgress(progress: JobProgress): void;
-	/** Makes the next job fail after reporting progress up to the write phase. */
+	/**
+	 * Makes every job from here to the end of the test fail, after reporting progress
+	 * up to the write phase. `beforeEach` is what clears it, not the failing run.
+	 */
 	failRunner(message: string): void;
 	/** Restarts the server with a different default model — for model-fallback tests only. */
 	restartWithDefaultModel(model: GenerationModel): Promise<void>;
