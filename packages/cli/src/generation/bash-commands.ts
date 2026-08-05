@@ -87,7 +87,7 @@ function heredocDelimiter(line: string): string | undefined {
 interface HeredocScan {
 	/** The command with every heredoc body removed. */
 	readonly commands: string;
-	/** The delimiter of every heredoc the command opens, in order. */
+	/** The delimiter of the first heredoc each line opens, in order. */
 	readonly delimiters: string[];
 }
 
@@ -117,12 +117,17 @@ function scanHeredocs(command: string): HeredocScan {
 }
 
 /**
- * The delimiter of every heredoc the command actually opens.
+ * The delimiter of the first heredoc each line of the command opens.
  *
  * A mention of an opener is not an opener: `rg "<< 'AGENT_EOF'"` searches for that
  * text, and `# see <<EOF` is a comment. Callers that key off a specific delimiter
  * — the chapter JSON is written through `<< 'AGENT_EOF'` — need that distinction,
  * which a substring match on the raw command cannot make.
+ *
+ * Only the first opener on a line is reported, so `cat <<'A'; cat <<'B'` yields
+ * just `A`. Bash queues both bodies, and reading them apart means tracking a stack
+ * of pending delimiters — the same conservatism as `heredocDelimiter`: under-report
+ * rather than invent a delimiter that would swallow every following line.
  */
 export function heredocDelimiters(command: string): string[] {
 	return scanHeredocs(command).delimiters;

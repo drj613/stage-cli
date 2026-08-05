@@ -37,6 +37,14 @@ describe("PhaseTracker", () => {
 		expect(tracker.phase).toBe(GENERATION_PHASE.PREP);
 	});
 
+	it("does not advance when a failed prep's result is delivered twice", () => {
+		const tracker = new PhaseTracker();
+		tracker.observeToolUse("t1", "Bash", { command: PREP_COMMAND });
+		tracker.observeToolResult("t1", true);
+		tracker.observeToolResult("t1", false);
+		expect(tracker.phase).toBe(GENERATION_PHASE.PREP);
+	});
+
 	it("ignores a result for a different tool call", () => {
 		const tracker = new PhaseTracker();
 		tracker.observeToolUse("t1", "Bash", { command: PREP_COMMAND });

@@ -47,10 +47,9 @@ export const GENERATION_PHASE = {
 } as const;
 export type GenerationPhase = (typeof GENERATION_PHASE)[keyof typeof GENERATION_PHASE];
 
-/** Display order, and the ordinal the tracker's monotonic rule compares. */
-export const GENERATION_PHASE_ORDER = [
-	GENERATION_PHASE.PREP,
-	GENERATION_PHASE.ANALYZE,
-	GENERATION_PHASE.WRITE,
-	GENERATION_PHASE.IMPORT,
-] as const;
+/**
+ * Display order, and the ordinal the tracker's monotonic rule compares. Derived
+ * from the enum so declaration order *is* display order — string-key insertion
+ * order is spec-guaranteed, and a new phase cannot be left out of the list.
+ */
+export const GENERATION_PHASE_ORDER = Object.values(GENERATION_PHASE);

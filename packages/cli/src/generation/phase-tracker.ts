@@ -8,14 +8,20 @@ import { z } from "zod";
 import { heredocDelimiters, invokesSubcommand } from "./bash-commands.js";
 
 const STAGEREVIEW = "stagereview";
-/** The delimiter of the heredoc the chapter JSON is written through. */
-const AGENT_OUTPUT_DELIMITER = "AGENT_EOF";
+/**
+ * The delimiter of the heredoc the chapter JSON is written through. This and
+ * {@link AGENT_OUTPUT_BASENAME} are a contract with step 5 of the stage-chapters
+ * skill; `skill-contract.test.ts` fails if the two drift apart.
+ */
+export const AGENT_OUTPUT_DELIMITER = "AGENT_EOF";
 /**
  * Matched against the basename, not the whole path, so an unrelated file that
  * merely mentions the output name — `docs/notes-stage-agent-output.md` — does not
- * count as writing chapters.
+ * count as writing chapters. Split with `node:path` rather than `path.posix`, which
+ * `bash-commands` uses: a `file_path` is a real path on the machine the agent runs
+ * on, with native separators, where a shell command is always POSIX text.
  */
-const AGENT_OUTPUT_BASENAME = /^stage-agent-output/;
+export const AGENT_OUTPUT_BASENAME = /^stage-agent-output/;
 
 const CommandInput = z.object({ command: z.string() });
 const FilePathInput = z.object({ file_path: z.string() });
@@ -71,6 +77,8 @@ export class PhaseTracker {
 	}
 
 	observeToolResult(toolUseId: string, isError: boolean): void {
+		// The delete happens before the isError bail, not because of it: a failed prep
+		// is retired for good, so a replayed success cannot revive it.
 		if (!this.pendingPreps.delete(toolUseId) || isError) return;
 		this.advanceTo(GENERATION_PHASE.ANALYZE);
 	}

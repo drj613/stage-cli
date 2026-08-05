@@ -85,9 +85,14 @@ describe("heredocDelimiters", () => {
 		expect(heredocDelimiters("rg AGENT_EOF src")).toEqual([]);
 	});
 
-	it("reports every heredoc a command opens, and none from inside a body", () => {
+	it("reports one delimiter per opening line, and none from inside a body", () => {
 		const command = ["cat <<'A'", "cat <<'NOT_A_HEREDOC'", "A", "cat <<'B'", "B"].join("\n");
 		expect(heredocDelimiters(command)).toEqual(["A", "B"]);
+	});
+
+	it("reports only the first of two openers on one line", () => {
+		expect(heredocDelimiters("cat <<'A'; cat <<'B'")).toEqual(["A"]);
+		expect(heredocDelimiters("cat <<'A' <<'B'\nx\nA\ny\nB")).toEqual(["A"]);
 	});
 
 	it("reports nothing for a herestring or a commented opener", () => {
