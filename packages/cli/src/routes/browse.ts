@@ -7,6 +7,7 @@ import type { CloneRegistry } from "../clones/clone-registry.js";
 import type { StageDb } from "../db/client.js";
 import { ghErrorMessage } from "../github/exec.js";
 import { listRepoPullRequests } from "../github/pr-list.js";
+import { toNameWithOwner } from "../github/repo.js";
 import { listOrgRepos } from "../github/repos.js";
 import { RunIndex } from "../runs/run-index.js";
 import type { Route } from "../server.js";
@@ -51,7 +52,7 @@ export function browseRoutes(db: StageDb, registry: CloneRegistry): Route[] {
 					writeJson(res, 400, { error: "Missing owner or repo" });
 					return;
 				}
-				const nameWithOwner = `${owner}/${repo}`.toLowerCase();
+				const nameWithOwner = toNameWithOwner({ owner, repo });
 				const index = RunIndex.load(db);
 				try {
 					const pullRequests = await listRepoPullRequests(nameWithOwner, process.cwd(), {
