@@ -1,4 +1,5 @@
 import {
+	type ActiveGenerationJobs,
 	GENERATION_MODEL,
 	type GenerateAccepted,
 	type GenerationModel,
@@ -59,6 +60,13 @@ export function generateRoutes(
 					? active.id
 					: jobs.enqueue({ prUrl, repoRoot, requestedModel: body.model });
 				writeJson(res, 202, { jobId } satisfies GenerateAccepted);
+			},
+		},
+		{
+			method: "GET",
+			pattern: "/api/generate",
+			handler: (_req, res) => {
+				writeJson(res, 200, { jobs: jobs.activeJobs() } satisfies ActiveGenerationJobs);
 			},
 		},
 		{

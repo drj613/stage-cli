@@ -1,7 +1,11 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { GenerationModel } from "@stagereview/types/generation";
+import {
+	GENERATION_PHASE,
+	type GenerationModel,
+	type JobProgress,
+} from "@stagereview/types/generation";
 import { afterEach, beforeEach } from "vitest";
 import { CloneRegistry } from "../clones/clone-registry.js";
 import { closeDb, getDb, type StageDb } from "../db/client.js";
@@ -26,6 +30,10 @@ export interface GenerateRoutesEnv {
 	/** Holds the runner mid-job so a second request lands while one is in flight. */
 	blockRunner(): void;
 	releaseRunner(): void;
+	/** Pushes a progress snapshot from inside the currently running job. */
+	pushProgress(progress: JobProgress): void;
+	/** Makes the next job fail after reporting progress up to the write phase. */
+	failRunner(message: string): void;
 	/** Restarts the server with a different default model — for model-fallback tests only. */
 	restartWithDefaultModel(model: GenerationModel): Promise<void>;
 }
@@ -45,6 +53,8 @@ export function setupGenerateRoutesTest(): GenerateRoutesEnv {
 	let registry: CloneRegistry;
 	let blocked: Promise<void> = Promise.resolve();
 	let releaseRunner: () => void = () => {};
+	let pushProgress: (progress: JobProgress) => void = () => {};
+	let failure: string | null = null;
 
 	beforeEach(async () => {
 		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage-generate-"));
@@ -64,8 +74,21 @@ export function setupGenerateRoutesTest(): GenerateRoutesEnv {
 		requested = [];
 		blocked = Promise.resolve();
 		releaseRunner = () => {};
-		jobs = new JobManager(async (job) => {
+		pushProgress = () => {};
+		failure = null;
+		jobs = new JobManager(async (job, onProgress) => {
 			requested.push(job);
+			pushProgress = onProgress;
+			if (failure !== null) {
+				onProgress({
+					startedAt: 1,
+					resolvedModel: null,
+					turns: 1,
+					phase: GENERATION_PHASE.WRITE,
+					activity: [],
+				});
+				throw new Error(failure);
+			}
 			await blocked;
 			return "run-abc";
 		});
@@ -109,6 +132,12 @@ export function setupGenerateRoutesTest(): GenerateRoutesEnv {
 		},
 		releaseRunner() {
 			releaseRunner();
+		},
+		pushProgress(progress: JobProgress) {
+			pushProgress(progress);
+		},
+		failRunner(message: string) {
+			failure = message;
 		},
 		async restartWithDefaultModel(model) {
 			await handle?.close();
