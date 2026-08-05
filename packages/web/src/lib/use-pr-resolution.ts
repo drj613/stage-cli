@@ -17,7 +17,7 @@ import { PULL_REQUESTS_QUERY_ROOT } from "./use-pull-requests";
 import { RUNS_QUERY_KEY } from "./use-runs";
 import { jsonFetch } from "./use-view-state";
 
-const JOB_POLL_INTERVAL_MS = 3_000;
+const JOB_POLL_INTERVAL_MS = 1_000;
 const ErrorBodySchema = z.object({ error: z.string() });
 
 export interface PrAddress {

@@ -1,4 +1,4 @@
-import type { GenerationJob } from "@stagereview/types/generation";
+import type { GenerationJob, JobProgress } from "@stagereview/types/generation";
 import type { PrResolution } from "@stagereview/types/pull-requests";
 import { describe, expect, it } from "vitest";
 import { deriveResolverView } from "../resolver-view";
@@ -58,7 +58,7 @@ describe("deriveResolverView", () => {
 				job: job({ status: "failed", error: "agent crashed mid-run" }),
 				generationError: null,
 			}),
-		).toEqual({ tag: "failed", error: "agent crashed mid-run" });
+		).toEqual({ tag: "failed", error: "agent crashed mid-run", progress: null });
 	});
 
 	it("prefers the job's own error over generationError when both are present", () => {
@@ -69,7 +69,7 @@ describe("deriveResolverView", () => {
 				job: job({ status: "failed", error: "job error" }),
 				generationError: "stale generationError",
 			}),
-		).toEqual({ tag: "failed", error: "job error" });
+		).toEqual({ tag: "failed", error: "job error", progress: null });
 	});
 
 	it("a live running job shows progress after Retry from a failed resolution", () => {
@@ -80,7 +80,7 @@ describe("deriveResolverView", () => {
 				job: job({ status: "running" }),
 				generationError: null,
 			}),
-		).toEqual({ tag: "progress", queuePosition: null });
+		).toEqual({ tag: "progress", queuePosition: null, progress: null });
 	});
 
 	it("a live queued job shows progress after Regenerate from a stale resolution", () => {
@@ -91,7 +91,7 @@ describe("deriveResolverView", () => {
 				job: job({ status: "queued", queuePosition: 2 }),
 				generationError: null,
 			}),
-		).toEqual({ tag: "progress", queuePosition: 2 });
+		).toEqual({ tag: "progress", queuePosition: 2, progress: null });
 	});
 
 	it("an untouched stale resolution (no job yet) shows the stale card", () => {
@@ -113,7 +113,7 @@ describe("deriveResolverView", () => {
 				job: null,
 				generationError: "agent crashed",
 			}),
-		).toEqual({ tag: "failed", error: "agent crashed" });
+		).toEqual({ tag: "failed", error: "agent crashed", progress: null });
 	});
 
 	it("maps ready to progress (the page navigates away separately)", () => {
@@ -124,7 +124,7 @@ describe("deriveResolverView", () => {
 				job: null,
 				generationError: null,
 			}),
-		).toEqual({ tag: "progress", queuePosition: null });
+		).toEqual({ tag: "progress", queuePosition: null, progress: null });
 	});
 
 	it("maps no-clone to the no-clone card", () => {
@@ -146,7 +146,7 @@ describe("deriveResolverView", () => {
 				job: null,
 				generationError: null,
 			}),
-		).toEqual({ tag: "progress", queuePosition: null });
+		).toEqual({ tag: "progress", queuePosition: null, progress: null });
 	});
 
 	it("maps generating with no job data yet to progress", () => {
@@ -157,6 +157,49 @@ describe("deriveResolverView", () => {
 				job: null,
 				generationError: null,
 			}),
-		).toEqual({ tag: "progress", queuePosition: null });
+		).toEqual({ tag: "progress", queuePosition: null, progress: null });
+	});
+});
+
+describe("deriveResolverView progress payload", () => {
+	const progress: JobProgress = {
+		startedAt: 1,
+		resolvedModel: "claude-sonnet-4-5-20250929",
+		turns: 4,
+		phase: "analyze",
+		activity: [{ tool: "Read", target: "src/a.ts", state: "done" }],
+	};
+
+	it("passes the snapshot through on a running job", () => {
+		expect(
+			deriveResolverView({
+				resolution: GENERATING,
+				resolutionError: null,
+				job: job({ progress }),
+				generationError: null,
+			}),
+		).toEqual({ tag: "progress", queuePosition: null, progress });
+	});
+
+	it("keeps the snapshot on a failed job", () => {
+		expect(
+			deriveResolverView({
+				resolution: GENERATING,
+				resolutionError: null,
+				job: job({ status: "failed", error: "boom", progress }),
+				generationError: null,
+			}),
+		).toEqual({ tag: "failed", error: "boom", progress });
+	});
+
+	it("has no snapshot when there is no job", () => {
+		expect(
+			deriveResolverView({
+				resolution: NEEDS_GENERATION,
+				resolutionError: null,
+				job: null,
+				generationError: null,
+			}),
+		).toEqual({ tag: "progress", queuePosition: null, progress: null });
 	});
 });

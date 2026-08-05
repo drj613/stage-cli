@@ -1,4 +1,4 @@
-import type { GenerationJob } from "@stagereview/types/generation";
+import type { GenerationJob, JobProgress } from "@stagereview/types/generation";
 import { JOB_STATUS } from "@stagereview/types/generation";
 import { PR_RESOLUTION, type PrResolution } from "@stagereview/types/pull-requests";
 
@@ -15,10 +15,10 @@ import { PR_RESOLUTION, type PrResolution } from "@stagereview/types/pull-reques
 export type ResolverView =
 	| { tag: "loading" }
 	| { tag: "error"; message: string }
-	| { tag: "failed"; error: string }
+	| { tag: "failed"; error: string; progress: JobProgress | null }
 	| { tag: "stale"; runId: string }
 	| { tag: "no-clone"; nameWithOwner: string }
-	| { tag: "progress"; queuePosition: number | null };
+	| { tag: "progress"; queuePosition: number | null; progress: JobProgress | null };
 
 export interface ResolverViewInput {
 	resolution: PrResolution | undefined;
@@ -52,16 +52,17 @@ export function deriveResolverView({
 	// the resolution reported before this job existed.
 	if (job !== null) {
 		if (job.status === JOB_STATUS.FAILED) {
-			return { tag: "failed", error: job.error ?? generationError ?? "" };
+			return { tag: "failed", error: job.error ?? generationError ?? "", progress: job.progress };
 		}
 		return {
 			tag: "progress",
 			queuePosition: job.status === JOB_STATUS.QUEUED ? job.queuePosition : null,
+			progress: job.progress,
 		};
 	}
 
 	if (resolution.state === PR_RESOLUTION.FAILED || generationError !== null) {
-		return { tag: "failed", error: generationError ?? "" };
+		return { tag: "failed", error: generationError ?? "", progress: null };
 	}
 	if (resolution.state === PR_RESOLUTION.STALE) {
 		return { tag: "stale", runId: resolution.runId };
@@ -70,7 +71,7 @@ export function deriveResolverView({
 		return { tag: "no-clone", nameWithOwner: resolution.nameWithOwner };
 	}
 	// ready (pre-navigate), needs-generation, or generating with no job data yet.
-	return { tag: "progress", queuePosition: null };
+	return { tag: "progress", queuePosition: null, progress: null };
 }
 
 /**
