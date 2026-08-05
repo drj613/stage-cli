@@ -16,10 +16,16 @@ import {
 	spawnClaude,
 } from "./agent-session.js";
 
-// Re-exported so existing importers (and the job-manager tests) keep resolving
-// it here; the implementation lives in run-id.ts to keep agent-session.ts and
-// job-manager.ts free of an import cycle.
-export { parseRunnerOutput } from "./run-id.js";
+/**
+ * How many PRs keep a finished job. A terminal job is retained for two reasons:
+ * a poll that lands just after a run finishes must still find it, and
+ * `latestJobFor` needs it to report a failure the dashboard can render. Both
+ * only ever want the newest job for a PR, and this daemon runs for weeks, so
+ * older jobs for the same PR go as soon as they are superseded and the number of
+ * distinct PRs is capped. Fifty is well past what a session browses, and the
+ * whole retained set is a few hundred kilobytes at worst.
+ */
+export const MAX_RETAINED_PRS = 50;
 
 export interface JobRequest {
 	prUrl: string;
@@ -99,12 +105,14 @@ export class JobManager {
 
 	/**
 	 * Every job that has not reached a terminal status — what the dashboard badges.
-	 * Insertion-ordered, oldest first.
+	 * Insertion-ordered, oldest first, and already converted for the wire: handing
+	 * out `Job` here would let a list route ship `repoRoot` without a type error,
+	 * since `satisfies` does not check excess properties on an array.
 	 */
-	activeJobs(): Job[] {
-		const active: Job[] = [];
+	activeJobs(): GenerationJob[] {
+		const active: GenerationJob[] = [];
 		for (const job of this.jobs.values()) {
-			if (!isTerminalJobStatus(job.status)) active.push(this.snapshot(job));
+			if (!isTerminalJobStatus(job.status)) active.push(toWireJob(this.snapshot(job)));
 		}
 		return active;
 	}
@@ -124,7 +132,7 @@ export class JobManager {
 		return latest ? this.snapshot(latest) : null;
 	}
 
-	/** A snapshot of the job — callers can't mutate the queue's state through it. */
+	/** A snapshot of the job — see {@link JobManager.snapshot} for how deep it copies. */
 	get(id: string): Job | null {
 		const job = this.jobs.get(id);
 		return job ? this.snapshot(job) : null;
@@ -136,11 +144,30 @@ export class JobManager {
 		return idx >= 0 ? idx + 1 : null;
 	}
 
+	/**
+	 * A copy deep enough that nothing a caller holds is shared with the queue:
+	 * every field of the job, and every field of its progress down to the activity
+	 * entries. That depth is exact, not defensive — the same hazard
+	 * `StreamReducer.snapshot` documents. A shallow copy would let a caller write
+	 * a value `GenerationJobSchema` rejects, after which every poll for that job
+	 * fails; add a nested field to `ActivityEntry` and this stops being isolation.
+	 */
 	private snapshot(job: Job): Job {
-		return { ...job, queuePosition: this.positionOf(job) };
+		const { progress } = job;
+		return {
+			...job,
+			queuePosition: this.positionOf(job),
+			progress:
+				progress === null
+					? null
+					: { ...progress, activity: progress.activity.map((entry) => ({ ...entry })) },
+		};
 	}
 
-	/** Resolves when the queue is empty. For tests and graceful shutdown. */
+	/**
+	 * Resolves once every enqueued job has settled. Used by tests; a runner that
+	 * never settles leaves this pending, exactly as it leaves the queue stalled.
+	 */
 	settled(): Promise<void> {
 		return this.running ? this.idle : Promise.resolve();
 	}
@@ -159,11 +186,41 @@ export class JobManager {
 			} catch (err) {
 				current.status = JOB_STATUS.FAILED;
 				current.error = err instanceof Error ? err.message : String(err);
+				// The only signal a headless run failed: the dashboard may not be open,
+				// and nothing else writes this. The PR identifies the job; the clone
+				// path is deliberately left out.
+				console.error(`[stage:generate] ${current.prUrl} failed: ${current.error}`);
 			}
+			this.evictTerminal();
 			job = this.queue.shift();
 		}
 		this.running = false;
 		this.resolveIdle();
+	}
+
+	/**
+	 * Drops finished jobs the dashboard can no longer use: any superseded by a newer
+	 * job for the same PR, then the oldest PRs past {@link MAX_RETAINED_PRS}.
+	 * Non-terminal jobs are never touched. Deleting an entry already visited is safe
+	 * during Map iteration.
+	 */
+	private evictTerminal(): void {
+		const newestByPr = new Map<string, Job>();
+		for (const job of this.jobs.values()) {
+			if (!isTerminalJobStatus(job.status)) continue;
+			const key = job.prUrl.toLowerCase();
+			const superseded = newestByPr.get(key);
+			if (superseded !== undefined) this.jobs.delete(superseded.id);
+			// Re-inserting moves the PR to the end, so iteration order is oldest first.
+			newestByPr.delete(key);
+			newestByPr.set(key, job);
+		}
+		let excess = newestByPr.size - MAX_RETAINED_PRS;
+		for (const job of newestByPr.values()) {
+			if (excess <= 0) return;
+			this.jobs.delete(job.id);
+			excess -= 1;
+		}
 	}
 }
 

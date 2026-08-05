@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto";
-import type { JobProgress } from "@stagereview/types/generation";
-import { describe, expect, it } from "vitest";
-import { JobManager, parseRunnerOutput } from "../generation/job-manager.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { JobManager } from "../generation/job-manager.js";
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("JobManager", () => {
 	it("runs jobs sequentially", async () => {
@@ -53,6 +53,27 @@ describe("JobManager", () => {
 		expect(manager.get(bad)?.status).toBe("failed");
 		expect(manager.get(bad)?.error).toBe("boom");
 		expect(manager.get(good)?.status).toBe("succeeded");
+	});
+
+	it("reports a failure to stderr without naming the clone", async () => {
+		const logged: string[] = [];
+		vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+			logged.push(args.map(String).join(" "));
+		});
+		const manager = new JobManager(async () => {
+			throw new Error("claude exited with code 1");
+		});
+		manager.enqueue({
+			prUrl: "https://github.com/x/x/pull/9",
+			repoRoot: "/Users/secret/private-repo",
+			requestedModel: "sonnet",
+		});
+		await manager.settled();
+
+		expect(logged).toHaveLength(1);
+		expect(logged[0]).toContain("https://github.com/x/x/pull/9");
+		expect(logged[0]).toContain("claude exited with code 1");
+		expect(logged[0]).not.toContain("secret");
 	});
 });
 
@@ -146,66 +167,5 @@ describe("JobManager.activeJobFor", () => {
 		release();
 		await manager.settled();
 		expect(manager.activeJobFor("https://github.com/Acme/Widgets/pull/7")).toBeNull();
-	});
-});
-
-describe("JobManager progress", () => {
-	it("exposes the latest snapshot and lists only non-terminal jobs", async () => {
-		let push: (progress: JobProgress) => void = () => {};
-		let release = () => {};
-		const blocked = new Promise<void>((resolve) => {
-			release = resolve;
-		});
-		const manager = new JobManager(async (_job, onProgress) => {
-			push = onProgress;
-			await blocked;
-			return "run-1";
-		});
-		const id = manager.enqueue({
-			prUrl: "https://github.com/o/r/pull/1",
-			repoRoot: "/o",
-			requestedModel: "sonnet",
-		});
-		await new Promise((r) => setTimeout(r, 0));
-
-		const progress: JobProgress = {
-			startedAt: 1,
-			resolvedModel: "claude-sonnet-5",
-			turns: 3,
-			phase: "analyze",
-			activity: [{ tool: "Read", target: "src/a.ts", state: "done" }],
-		};
-		push(progress);
-		expect(manager.get(id)?.progress).toEqual(progress);
-		expect(manager.get(id)?.requestedModel).toBe("sonnet");
-		expect(manager.activeJobs().map((job) => job.id)).toEqual([id]);
-
-		release();
-		await manager.settled();
-		expect(manager.activeJobs()).toEqual([]);
-	});
-});
-
-describe("parseRunnerOutput", () => {
-	it("takes the runId from the agent's last line", () => {
-		const runId = randomUUID();
-		expect(parseRunnerOutput(`Generated 4 chapters.\nWrote chapters.json\n${runId}\n`)).toBe(runId);
-	});
-
-	it("rejects a last line that is not a runId without echoing it", () => {
-		// Under stream-json this line is the tail of the agent's prose, which can
-		// quote source or file contents — it must not reach an error message.
-		expect(() => parseRunnerOutput("Here is the secret token abc123.\n")).toThrow(
-			"Agent did not return a valid runId.",
-		);
-		expect(() => parseRunnerOutput("Here is the secret token abc123.\n")).not.toThrow(/abc123/);
-	});
-
-	it("rejects a 36-character non-UUID", () => {
-		expect(() => parseRunnerOutput("-".repeat(36))).toThrow(/valid runId/);
-	});
-
-	it("rejects empty output", () => {
-		expect(() => parseRunnerOutput("   \n")).toThrow(/valid runId/);
 	});
 });

@@ -161,19 +161,41 @@ function describePath(filePath: string, repoRoot: string): string {
 }
 
 /**
+ * An absolute path inside a larger string: a `/` that begins a word, up to the
+ * next blank, quote, or shell operator. The lookbehind is what keeps a URL whole
+ * — `https://github.com/o/r/pull/7` is worth displaying and holds no secret,
+ * while `//github.com` reduced to a basename would display as `github.com`.
+ */
+const ABSOLUTE_PATH = /(?<![\w:/])\/[^\s'"|;&<>()]+/g;
+
+/**
+ * Rewrites every absolute path in display text the way a file target is
+ * rewritten. The agent runs `git -C <clone>`, `mktemp`, and `stagereview import
+ * <tmpdir>/chapters.json` as a matter of course, so a command line quoted
+ * verbatim publishes the user's home directory — and the clone root that the
+ * wire type deliberately omits — straight to the browser.
+ *
+ * A token-level rewrite is enough because this is display text: nothing
+ * downstream executes or resolves it.
+ */
+function redactPaths(text: string, repoRoot: string): string {
+	return text.replace(ABSOLUTE_PATH, (match) => describePath(match, repoRoot));
+}
+
+/**
  * Only the first line survives, which matters most for the chapter-writing
  * heredoc: its body is agent-authored prose about the user's code. A comment on
  * the first line is refused for the same reason — the tokenizer ignores comments
  * when finding programs, so displaying one would show arbitrary prose in place of
  * the command that actually ran.
  */
-function describeCommand(command: string): string {
+function describeCommand(command: string, repoRoot: string): string {
 	const programs = commandPrograms(command);
 	if (programs.length === 0) return OPAQUE_COMMAND;
 	if (!programs.every((program) => ALLOWED_BASH_PROGRAMS.has(program))) return OPAQUE_COMMAND;
 	const firstLine = sanitizeText(command.split("\n")[0] ?? "");
 	if (firstLine === "" || firstLine.startsWith("#")) return OPAQUE_COMMAND;
-	return cap(firstLine, BASH_LIMIT, TARGET_LIMIT);
+	return cap(redactPaths(firstLine, repoRoot), BASH_LIMIT, TARGET_LIMIT);
 }
 
 /**
@@ -207,7 +229,10 @@ export function describeToolUse(name: string, input: unknown, repoRoot: string):
 		}
 		case "Bash": {
 			const parsed = CommandInput.safeParse(input);
-			return { tool, target: parsed.success ? describeCommand(parsed.data.command) : "" };
+			return {
+				tool,
+				target: parsed.success ? describeCommand(parsed.data.command, repoRoot) : "",
+			};
 		}
 		case "Glob":
 		case "Grep": {
@@ -215,7 +240,11 @@ export function describeToolUse(name: string, input: unknown, repoRoot: string):
 			return {
 				tool,
 				target: parsed.success
-					? cap(sanitizeText(parsed.data.pattern), PATTERN_LIMIT, TARGET_LIMIT)
+					? cap(
+							redactPaths(sanitizeText(parsed.data.pattern), repoRoot),
+							PATTERN_LIMIT,
+							TARGET_LIMIT,
+						)
 					: "",
 			};
 		}

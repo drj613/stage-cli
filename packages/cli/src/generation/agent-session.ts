@@ -170,7 +170,7 @@ export class AgentSession {
 				this.spawned = true;
 				// Without this first push, progress stays null until the init event
 				// lands seconds later and a running job looks queued.
-				this.options.onProgress(this.reducer.snapshot());
+				this.report();
 			});
 
 			child.on("error", (err: Error) => {
@@ -209,7 +209,7 @@ export class AgentSession {
 					.createInterface({ input: child.stdout, crlfDelay: Number.POSITIVE_INFINITY })
 					.on("line", (line) => {
 						this.reducer.consumeLine(line);
-						this.options.onProgress(this.reducer.snapshot());
+						this.report();
 					});
 			}
 			if (child.stderr) {
@@ -230,6 +230,17 @@ export class AgentSession {
 				}, this.options.killGraceMs);
 			}, this.options.timeoutMs);
 		});
+	}
+
+	/**
+	 * Hands the current snapshot to the caller, unless this run has settled. The
+	 * bounded-drain path settles while stdout — and the readline interface reading
+	 * it — are still open, so lines keep arriving afterwards; forwarding them would
+	 * keep a finished job's activity changing in the dashboard.
+	 */
+	private report(): void {
+		if (this.settled) return;
+		this.options.onProgress(this.reducer.snapshot());
 	}
 
 	/**
