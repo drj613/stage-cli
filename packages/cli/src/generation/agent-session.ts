@@ -56,10 +56,19 @@ export interface AgentSessionOptions {
 	readonly drainMs: number;
 }
 
-function promptFor(prUrl: string): string {
+/**
+ * The working directory persists across Bash calls, so a `cd` in an early step
+ * silently moves every later command. `stagereview import` run outside the clone
+ * is rejected as a different repository, which is how a real run was lost — hence
+ * the repo root is spelled out rather than assumed from the spawn cwd.
+ */
+export function promptFor(job: JobRequest): string {
 	return [
-		`/stage-chapters --pr ${prUrl}`,
+		`/stage-chapters --pr ${job.prUrl}`,
 		"IMPORTANT: this is a headless run for the Stage dashboard.",
+		`The repository root is ${job.repoRoot}. Every \`stagereview\` command must run from there:`,
+		`prefix each one with \`cd ${job.repoRoot} && \`, including \`prep\` and \`import\`.`,
+		"Never assume a `cd` from an earlier command is still in effect.",
 		"In the final step, run `stagereview import` (same arguments as `show`) instead of `stagereview show`,",
 		"and print ONLY the runId it outputs as your last line.",
 	].join("\n");
@@ -71,7 +80,7 @@ export function spawnClaude(job: JobRequest): SpawnedChild {
 		"claude",
 		[
 			"-p",
-			promptFor(job.prUrl),
+			promptFor(job),
 			"--model",
 			job.requestedModel,
 			"--permission-mode",

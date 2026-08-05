@@ -112,6 +112,8 @@ The two number columns are the **old line number** (left) and **new line number*
 
 ## Step 3 — Cluster + narrate
 
+If the `=== HUNKS ===` section is empty, produce an empty `chapters` array and continue. A diff of only lockfiles or binaries filters down to nothing, and there is nothing to cluster. Do **not** invent `hunkRefs` to fill the array.
+
 Using the hunks from `hunks.txt`, produce a `chapters` array. Each chapter groups related hunks into a coherent story beat, narrates them for a reviewer unfamiliar with this part of the codebase, and flags judgment calls that need human input.
 
 ### 3a — Clustering rules
@@ -347,3 +349,5 @@ stagereview import "$AGENT_OUTPUT" --pr <ref>
 ```
 
 Use the same scope flags you passed to `stagereview prep` (`--pr`, `--base`, `--compare`, refs). `stagereview import` performs the same validation and database insertion as `show`, but exits immediately without starting a server or opening a browser, and prints the new run's `runId` to stdout. Print that runId as the last line of your output — the dashboard uses it to link to the run. All other steps are unchanged.
+
+**Run every `stagereview` command from the repository root.** The headless prompt names that root; prefix each command with `cd <repo-root> && `, including `prep` and `import`. The shell's working directory persists across Bash calls, so a `cd` from an earlier command may still be in effect — never assume you are already in the right place. `stagereview import` rejects a PR that doesn't belong to the current directory's repository, which is exactly what a stray `cd` causes.
