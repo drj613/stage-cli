@@ -5,9 +5,14 @@ import { Check, Copy, Loader2, RefreshCw } from "lucide-react";
 import type { ReactElement } from "react";
 import { useEffect, useState } from "react";
 import { ListNotice } from "@/components/dashboard/list-notice";
+import { ActivityList } from "@/components/generation/activity-list";
+import { PhaseRail } from "@/components/generation/phase-rail";
+import { ProgressSummary } from "@/components/generation/progress-summary";
 import { Topbar } from "@/components/layout/topbar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PHASE_LABELS } from "@/lib/generation-labels";
+import type { JobSnapshot } from "@/lib/resolver-view";
 import { assertUnreachable, deriveResolverView } from "@/lib/resolver-view";
 import { useCloneRoots } from "@/lib/use-clone-roots";
 import type { PrAddress, PrResolutionMachine } from "@/lib/use-pr-resolution";
@@ -60,8 +65,14 @@ function ResolverBody({
 	prLabel: string;
 	params: PrAddress;
 }): ReactElement {
-	const { resolution, resolutionError, job, generate, generationError } = machine;
-	const view = deriveResolverView({ resolution, resolutionError, job, generationError });
+	const { resolution, resolutionError, job, generate, pollError, generationError } = machine;
+	const view = deriveResolverView({
+		resolution,
+		resolutionError,
+		job,
+		pollError,
+		generationError,
+	});
 
 	switch (view.tag) {
 		case "loading":
@@ -74,13 +85,19 @@ function ResolverBody({
 		case "error":
 			return <ListNotice title="Couldn't load this pull request." details={view.message} />;
 		case "failed":
-			return <FailedCard error={view.error} onRetry={generate} />;
+			return <FailedCard error={view.error} snapshot={view.snapshot} onRetry={generate} />;
 		case "stale":
 			return <StaleCard runId={view.runId} onRegenerate={generate} />;
 		case "no-clone":
 			return <NoCloneCard nameWithOwner={view.nameWithOwner} params={params} />;
 		case "progress":
-			return <ProgressCard prLabel={prLabel} queuePosition={view.queuePosition} />;
+			return (
+				<ProgressCard
+					prLabel={prLabel}
+					queuePosition={view.queuePosition}
+					snapshot={view.snapshot}
+				/>
+			);
 		default:
 			return assertUnreachable(view);
 	}
@@ -102,10 +119,47 @@ function StaleCard({ runId, onRegenerate }: { runId: string; onRegenerate: () =>
 	);
 }
 
-function FailedCard({ error, onRetry }: { error: string; onRetry: () => void }) {
+/**
+ * How far the job got before it died. Nothing to show for one that never
+ * spawned a process, which is why the whole block can be absent.
+ */
+function FailureDetail({ snapshot }: { snapshot: JobSnapshot }) {
+	const { progress } = snapshot;
+	if (progress === null) return null;
+	return (
+		<div className="space-y-1">
+			<p className="text-muted-foreground text-xs">Failed during: {PHASE_LABELS[progress.phase]}</p>
+			<ProgressSummary {...snapshot} />
+			{progress.activity.length > 0 && (
+				<details className="pt-1">
+					<summary className="cursor-pointer text-muted-foreground text-xs">Last steps</summary>
+					<div className="pt-2">
+						<ActivityList activity={progress.activity} />
+					</div>
+				</details>
+			)}
+		</div>
+	);
+}
+
+/**
+ * `error` and every activity target are sanitized, capped, and path-redacted
+ * server-side, so both render as plain text.
+ */
+function FailedCard({
+	error,
+	snapshot,
+	onRetry,
+}: {
+	error: string;
+	snapshot: JobSnapshot | null;
+	onRetry: () => void;
+}) {
 	return (
 		<div className="space-y-3 rounded-lg border p-4">
-			<p className="text-destructive text-sm">{error}</p>
+			{/* break-words: a poll failure's message can carry an unbroken URL. */}
+			<p className="break-words text-destructive text-sm">{error}</p>
+			{snapshot !== null && <FailureDetail snapshot={snapshot} />}
 			<Button onClick={onRetry}>
 				<RefreshCw className="size-3.5" />
 				Retry
@@ -117,18 +171,38 @@ function FailedCard({ error, onRetry }: { error: string; onRetry: () => void }) 
 function ProgressCard({
 	prLabel,
 	queuePosition,
+	snapshot,
 }: {
 	prLabel: string;
 	queuePosition: number | null;
+	snapshot: JobSnapshot | null;
 }) {
-	const body = queuePosition !== null ? `Queued — ${queuePosition} ahead` : "Chaptering…";
-	return (
-		<div className="flex items-center gap-3 rounded-lg border p-4">
-			<Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
-			<div className="min-w-0 space-y-1">
-				<p className="truncate font-medium text-sm">{prLabel}</p>
-				<p className="text-muted-foreground text-xs">{body}</p>
+	// Until the child process spawns there is no snapshot to show, so the place
+	// in line is all the card can honestly say.
+	if (snapshot === null || snapshot.progress === null) {
+		const body = queuePosition !== null ? `Queued — ${queuePosition} ahead` : "Chaptering…";
+		return (
+			<div className="flex items-center gap-3 rounded-lg border p-4">
+				<Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+				<div className="min-w-0 space-y-1">
+					<p className="truncate font-medium text-sm">{prLabel}</p>
+					<p className="text-muted-foreground text-xs">{body}</p>
+				</div>
 			</div>
+		);
+	}
+
+	return (
+		<div className="space-y-3 rounded-lg border p-4">
+			<div className="flex items-center gap-3">
+				<Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+				<div className="min-w-0 flex-1 space-y-0.5">
+					<p className="truncate font-medium text-sm">{prLabel}</p>
+					<ProgressSummary {...snapshot} />
+				</div>
+			</div>
+			<PhaseRail phase={snapshot.progress.phase} />
+			<ActivityList activity={snapshot.progress.activity} />
 		</div>
 	);
 }

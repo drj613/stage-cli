@@ -60,6 +60,11 @@ export interface PrResolutionMachine {
 	runId: string | null;
 	/** Explicit user action — Regenerate on stale, Retry on failed. */
 	generate: () => void;
+	/**
+	 * Why the job poll stopped, if it did. The poll doesn't retry, so this is
+	 * terminal for the snapshot beside it — see deriveResolverView.
+	 */
+	pollError: string | null;
 	generationError: string | null;
 }
 
@@ -156,6 +161,7 @@ export function usePrResolution(address: PrAddress): PrResolutionMachine {
 		job: job ?? null,
 		runId: job?.runId ?? resolvedRunId,
 		generate: () => mutate(),
+		pollError: pollError?.message ?? null,
 		generationError:
 			startError?.message ?? pollError?.message ?? job?.error ?? resolvedFailureError,
 	};

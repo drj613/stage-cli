@@ -1,6 +1,26 @@
-import type { GenerationJob, JobProgress } from "@stagereview/types/generation";
-import { JOB_STATUS } from "@stagereview/types/generation";
+import type { GenerationJob, GenerationModel, JobProgress } from "@stagereview/types/generation";
+import { isTerminalJobStatus, JOB_STATUS } from "@stagereview/types/generation";
 import { PR_RESOLUTION, type PrResolution } from "@stagereview/types/pull-requests";
+
+/** Shown when a job reports failure without saying why — a card with no text is worse. */
+const UNKNOWN_FAILURE = "Chapter generation failed.";
+
+/**
+ * Everything a card says about the job behind it, as one group rather than
+ * three loose props: `requestedModel` is the label until `progress` carries a
+ * resolved id, and `isRunning` is what keeps the elapsed clock off a job that
+ * can no longer advance.
+ */
+export interface JobSnapshot {
+	requestedModel: GenerationModel;
+	/** Null while queued, and for a job whose process never spawned. */
+	progress: JobProgress | null;
+	isRunning: boolean;
+}
+
+function snapshotOf(job: GenerationJob, isRunning: boolean): JobSnapshot {
+	return { requestedModel: job.requestedModel, progress: job.progress, isRunning };
+}
 
 /**
  * What the resolver page should render, as a single tagged union with
@@ -15,15 +35,17 @@ import { PR_RESOLUTION, type PrResolution } from "@stagereview/types/pull-reques
 export type ResolverView =
 	| { tag: "loading" }
 	| { tag: "error"; message: string }
-	| { tag: "failed"; error: string; progress: JobProgress | null }
+	| { tag: "failed"; error: string; snapshot: JobSnapshot | null }
 	| { tag: "stale"; runId: string }
 	| { tag: "no-clone"; nameWithOwner: string }
-	| { tag: "progress"; queuePosition: number | null; progress: JobProgress | null };
+	| { tag: "progress"; queuePosition: number | null; snapshot: JobSnapshot | null };
 
 export interface ResolverViewInput {
 	resolution: PrResolution | undefined;
 	resolutionError: unknown;
 	job: GenerationJob | null;
+	/** The job poll's own failure message, kept separate because it invalidates the snapshot it arrives with. */
+	pollError: string | null;
 	/** Precomputed by usePrResolution: startError, pollError, job.error, or the resolution's own reported error, in that precedence. */
 	generationError: string | null;
 }
@@ -38,6 +60,7 @@ export function deriveResolverView({
 	resolution,
 	resolutionError,
 	job,
+	pollError,
 	generationError,
 }: ResolverViewInput): ResolverView {
 	if (resolutionError) {
@@ -47,22 +70,39 @@ export function deriveResolverView({
 		return { tag: "loading" };
 	}
 
+	// A poll that errored is a dead end: the job query doesn't retry, so the
+	// cached snapshot beside it can never advance again. Rendering it as live
+	// progress would spin forever with nothing to click, so the error outranks
+	// the job it arrived with — and the snapshot goes along frozen, since a
+	// failed poll is no evidence the job is still moving.
+	if (pollError !== null) {
+		return {
+			tag: "failed",
+			error: pollError,
+			snapshot: job === null ? null : snapshotOf(job, false),
+		};
+	}
+
 	// A job object present means a job has been adopted (auto-start, Retry, or
 	// Regenerate) and is the freshest signal available — it outranks whatever
 	// the resolution reported before this job existed.
 	if (job !== null) {
 		if (job.status === JOB_STATUS.FAILED) {
-			return { tag: "failed", error: job.error ?? generationError ?? "", progress: job.progress };
+			return {
+				tag: "failed",
+				error: job.error ?? generationError ?? UNKNOWN_FAILURE,
+				snapshot: snapshotOf(job, false),
+			};
 		}
 		return {
 			tag: "progress",
 			queuePosition: job.status === JOB_STATUS.QUEUED ? job.queuePosition : null,
-			progress: job.progress,
+			snapshot: snapshotOf(job, !isTerminalJobStatus(job.status)),
 		};
 	}
 
 	if (resolution.state === PR_RESOLUTION.FAILED || generationError !== null) {
-		return { tag: "failed", error: generationError ?? "", progress: null };
+		return { tag: "failed", error: generationError ?? UNKNOWN_FAILURE, snapshot: null };
 	}
 	if (resolution.state === PR_RESOLUTION.STALE) {
 		return { tag: "stale", runId: resolution.runId };
@@ -71,7 +111,7 @@ export function deriveResolverView({
 		return { tag: "no-clone", nameWithOwner: resolution.nameWithOwner };
 	}
 	// ready (pre-navigate), needs-generation, or generating with no job data yet.
-	return { tag: "progress", queuePosition: null, progress: null };
+	return { tag: "progress", queuePosition: null, snapshot: null };
 }
 
 /**
