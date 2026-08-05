@@ -77,6 +77,41 @@ describe("AgentSession stderr", () => {
 		expect((await message).length).toBeLessThan(STDERR_LINE_LIMIT * 2);
 	});
 
+	it("rewrites a path inside the clone as repo-relative", async () => {
+		const logged = captureLog();
+		const child = new FakeChild();
+		const run = makeSession(child).run();
+		const message = run.then(
+			() => "",
+			(err: Error) => err.message,
+		);
+		child.emit("spawn");
+		child.stderr.write(`ENOENT: no such file or directory, open ${JOB.repoRoot}/src/a.ts\n`);
+		await flush();
+		child.close(1);
+
+		expect(await message).toContain("ENOENT: no such file or directory, open src/a.ts");
+		expect(await message).not.toContain(JOB.repoRoot);
+		expect(logged).toEqual([`${TAG} ENOENT: no such file or directory, open src/a.ts`]);
+	});
+
+	it("reduces a path outside the clone to its basename", async () => {
+		captureLog();
+		const child = new FakeChild();
+		const run = makeSession(child).run();
+		const message = run.then(
+			() => "",
+			(err: Error) => err.message,
+		);
+		child.emit("spawn");
+		child.stderr.write("cannot resolve /Users/secret/private-repo/notes.md\n");
+		await flush();
+		child.close(1);
+
+		expect(await message).toContain("cannot resolve notes.md");
+		expect(await message).not.toContain("secret");
+	});
+
 	it("truncates a huge line before sanitizing it, not after", async () => {
 		captureLog();
 		const child = new FakeChild();
@@ -90,6 +125,22 @@ describe("AgentSession stderr", () => {
 		// threshold below is not a close call.
 		const started = performance.now();
 		child.stderr.write(`${"x".repeat(5 * 1024 * 1024)}\n`);
+		await flush();
+		expect(performance.now() - started).toBeLessThan(200);
+
+		child.close(1);
+		await failure;
+	});
+
+	it("redacts after truncating, so a path-shaped megabyte stays cheap", async () => {
+		captureLog();
+		const child = new FakeChild();
+		const run = makeSession(child).run();
+		const failure = expect(run).rejects.toThrow();
+		child.emit("spawn");
+
+		const started = performance.now();
+		child.stderr.write(`${`${JOB.repoRoot}/a `.repeat(200_000)}\n`);
 		await flush();
 		expect(performance.now() - started).toBeLessThan(200);
 

@@ -2,7 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import type { EventEmitter } from "node:events";
 import readline from "node:readline";
 import type { JobProgress } from "@stagereview/types/generation";
-import { sanitizeText } from "./describe-tool-use.js";
+import { redactPaths, sanitizeText } from "./describe-tool-use.js";
 import type { JobRequest } from "./job-manager.js";
 import { parseRunnerOutput as parseRunId } from "./run-id.js";
 import { errorResultMessage, isSuccessResult } from "./stream-events.js";
@@ -286,10 +286,17 @@ export class AgentSession {
 	 * Trims before sanitizing, exactly as `stream-events.ts` does and for the same
 	 * reason: sanitizing segments the string into graphemes, so on a multi-megabyte
 	 * line — which readline will happily buffer — it blocks the event loop for the
-	 * best part of a second to discard all but 200 characters.
+	 * best part of a second to discard all but 200 characters. Redacting comes after
+	 * that trim for the same reason and before the final cap, so a rewritten path
+	 * shortens the line rather than being cut out of it.
+	 *
+	 * The tee and the tail share one string: this text reaches the browser through
+	 * `job.error`, and there is no case for showing the operator a raw home
+	 * directory that the dashboard is not allowed to see.
 	 */
 	private recordStderr(line: string): void {
-		const clean = sanitizeText(line.slice(0, STDERR_RAW_LIMIT)).slice(0, STDERR_LINE_LIMIT);
+		const trimmed = sanitizeText(line.slice(0, STDERR_RAW_LIMIT));
+		const clean = redactPaths(trimmed, this.options.job.repoRoot).slice(0, STDERR_LINE_LIMIT);
 		if (clean === "") return;
 		this.stderrTail.push(clean);
 		if (this.stderrTail.length > STDERR_TAIL_LINES) this.stderrTail.shift();
