@@ -41,7 +41,9 @@ export async function initTempRepo(
 	marker: string,
 	baseFiles: Record<string, string> = {},
 ): Promise<TempRepo> {
-	const dir = await fs.mkdtemp(path.join(os.tmpdir(), `stage-cli-${marker}-`));
+	// Realpath, because git reports the resolved worktree root and macOS's temp dir
+	// is a symlink — a test comparing the two would fail on the `/private` prefix alone.
+	const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), `stage-cli-${marker}-`)));
 	git(dir, "init", "--initial-branch=main");
 	git(dir, "config", "commit.gpgsign", "false");
 

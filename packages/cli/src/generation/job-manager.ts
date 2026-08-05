@@ -7,14 +7,6 @@ import {
 	JOB_STATUS,
 	type JobProgress,
 } from "@stagereview/types/generation";
-import {
-	AGENT_TIMEOUT_MS,
-	AgentSession,
-	ERROR_GRACE_MS,
-	KILL_GRACE_MS,
-	STDOUT_DRAIN_MS,
-	spawnClaude,
-} from "./agent-session.js";
 
 /**
  * How many PRs keep a finished job. A terminal job is retained for two reasons:
@@ -243,21 +235,4 @@ export class JobManager {
 			excess -= 1;
 		}
 	}
-}
-
-/** The real runner: one AgentSession per job. */
-export function claudeRunner(
-	job: JobRequest,
-	onProgress: (progress: JobProgress) => void,
-): Promise<string> {
-	return new AgentSession({
-		job,
-		onProgress,
-		now: () => Date.now(),
-		spawnChild: spawnClaude,
-		timeoutMs: AGENT_TIMEOUT_MS,
-		killGraceMs: KILL_GRACE_MS,
-		errorGraceMs: ERROR_GRACE_MS,
-		drainMs: STDOUT_DRAIN_MS,
-	}).run();
 }
