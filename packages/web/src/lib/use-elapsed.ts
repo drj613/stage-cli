@@ -8,8 +8,8 @@ const TICK_MS = 1_000;
  * interval would drift into showing durations a second apart for the same
  * moment.
  *
- * The timer only runs while someone is subscribed; a module singleton would
- * otherwise tick for the lifetime of the tab with nobody listening.
+ * The timer only runs while someone is subscribed; a bare module-scope
+ * `setInterval` would tick for the lifetime of the tab with nobody listening.
  */
 class Clock {
 	#listeners = new Set<() => void>();
@@ -32,12 +32,12 @@ class Clock {
 	};
 
 	/**
-	 * Cached, never a fresh `Date.now()` — React calls this repeatedly per render
-	 * and treats an always-changing value as an infinite loop. While the clock is
-	 * idle the reading is frozen, so the first frame after a gap with no
-	 * subscribers can be stale by the length of that gap. `subscribe` refreshes
-	 * it and React re-reads the snapshot right after subscribing, which corrects
-	 * the value before the next tick.
+	 * The cached reading, never a fresh `Date.now()`: a snapshot must only change
+	 * when the store changes, and this store changes on tick.
+	 *
+	 * That freezes the reading while the clock is idle, which is why `subscribe`
+	 * refreshes it — React re-reads the snapshot right after subscribing, so a
+	 * subscriber arriving after an idle gap still renders the current time.
 	 */
 	getSnapshot = (): number => this.#now;
 
@@ -49,10 +49,8 @@ class Clock {
 
 const clock = new Clock();
 
-/** No SSR here, but React still wants a server reading to hydrate against. */
-const getServerSnapshot = clock.getSnapshot;
-
-const NEVER_SUBSCRIBE = () => () => {};
+/** Passed in place of `clock.subscribe` to keep a caller off the clock entirely. */
+const noopSubscribe = () => () => {};
 
 /**
  * The shared clock's current reading in epoch ms, re-rendering once a second.
@@ -61,7 +59,7 @@ const NEVER_SUBSCRIBE = () => () => {};
  * itself.
  */
 export function useNow(): number {
-	return useSyncExternalStore(clock.subscribe, clock.getSnapshot, getServerSnapshot);
+	return useSyncExternalStore(clock.subscribe, clock.getSnapshot);
 }
 
 /**
@@ -73,15 +71,17 @@ export function useNow(): number {
  * `startedAt` ahead of the browser's clock, and a negative age is never worth
  * rendering. The result is fractional — format it before display.
  *
- * Pass `null` to stop the clock — callers own that decision, so a finished job
- * must switch to its recorded duration rather than leaving this hook ticking.
+ * `null` unsubscribes this caller; the shared clock keeps running for everyone
+ * else. Callers own that decision, so a finished job must switch to its recorded
+ * duration rather than leaving this hook ticking. A `NaN` start time — what
+ * `Date.parse` hands back for an unusable timestamp — is treated the same way,
+ * since the alternative is rendering "NaNs".
  */
 export function useElapsedSeconds(startedAt: number | null): number | null {
 	const start = startedAt !== null && Number.isFinite(startedAt) ? startedAt : null;
 	const now = useSyncExternalStore(
-		start === null ? NEVER_SUBSCRIBE : clock.subscribe,
+		start === null ? noopSubscribe : clock.subscribe,
 		clock.getSnapshot,
-		getServerSnapshot,
 	);
 
 	return start === null ? null : Math.max(0, (now - start) / 1000);

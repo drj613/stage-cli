@@ -100,6 +100,15 @@ describe("useElapsedSeconds — one shared clock", () => {
 		expect(late.result.current).toBe(early.result.current);
 	});
 
+	it("holds its reading between ticks rather than re-reading the system clock", () => {
+		const early = renderHook(() => useElapsedSeconds(START));
+		vi.setSystemTime(START + 1_500);
+		const late = renderHook(() => useElapsedSeconds(START));
+
+		expect(early.result.current).toBe(0);
+		expect(late.result.current).toBe(0);
+	});
+
 	it("runs one timer no matter how many subscribers there are", () => {
 		renderHook(() => useElapsedSeconds(START));
 		renderHook(() => useElapsedSeconds(START + 5_000));
@@ -124,5 +133,15 @@ describe("useElapsedSeconds — one shared clock", () => {
 		renderHook(() => useElapsedSeconds(null));
 
 		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("reads the current time when a subscriber arrives after an idle gap", () => {
+		const first = renderHook(() => useElapsedSeconds(START));
+		first.unmount();
+		expect(vi.getTimerCount()).toBe(0);
+
+		vi.setSystemTime(START + 30_000);
+		const second = renderHook(() => useElapsedSeconds(START));
+		expect(second.result.current).toBe(30);
 	});
 });
