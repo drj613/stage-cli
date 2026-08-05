@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { ErrorResultEvent } from "../generation/stream-events.js";
-import { errorResultMessage, parseStreamEvent } from "../generation/stream-events.js";
+import type { ContentBlock, ErrorResultEvent } from "../generation/stream-events.js";
+import {
+	errorResultMessage,
+	isToolResultBlock,
+	isToolUseBlock,
+	parseStreamEvent,
+} from "../generation/stream-events.js";
 
 function makeErrorResult(overrides: Partial<ErrorResultEvent> = {}): ErrorResultEvent {
 	return { type: "result", subtype: "error_during_execution", is_error: true, ...overrides };
@@ -110,6 +115,44 @@ describe("parseStreamEvent", () => {
 
 	it("treats a broken init event as unknown, since system covers other subtypes", () => {
 		expect(parseStreamEvent({ type: "system", subtype: "init", model: 5 }).outcome).toBe("unknown");
+	});
+});
+
+describe("content block predicates", () => {
+	function blocks(...content: unknown[]): ContentBlock[] {
+		const parsed = parseStreamEvent({ type: "assistant", message: { content } });
+		if (parsed.outcome !== "event" || parsed.event.type !== "assistant") {
+			throw new Error("fixture did not parse as an assistant event");
+		}
+		return parsed.event.message.content;
+	}
+
+	it("recognizes a parsed tool_use block", () => {
+		const [block] = blocks({ type: "tool_use", id: "t1", name: "Read", input: { file_path: "a" } });
+		expect(block !== undefined && isToolUseBlock(block)).toBe(true);
+		expect(block !== undefined && isToolResultBlock(block)).toBe(false);
+	});
+
+	it("recognizes a parsed tool_result block", () => {
+		const [block] = blocks({ type: "tool_result", tool_use_id: "t1", is_error: true });
+		expect(block !== undefined && isToolResultBlock(block)).toBe(true);
+		expect(block !== undefined && isToolUseBlock(block)).toBe(false);
+	});
+
+	it("rejects blocks it does not model", () => {
+		for (const block of blocks({ type: "text", text: "hi" }, { type: "thinking" })) {
+			expect(isToolUseBlock(block)).toBe(false);
+			expect(isToolResultBlock(block)).toBe(false);
+		}
+	});
+
+	it("relies on ingress to keep a block claiming tool_use but missing its id away", () => {
+		expect(
+			parseStreamEvent({
+				type: "assistant",
+				message: { content: [{ type: "tool_use", name: "Read", input: {} }] },
+			}).outcome,
+		).toBe("invalid");
 	});
 });
 

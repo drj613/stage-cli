@@ -31,6 +31,25 @@ const OtherBlockSchema = z.object({
 const ContentBlockSchema = z.union([ToolUseBlockSchema, ToolResultBlockSchema, OtherBlockSchema]);
 export type ToolUseBlock = z.infer<typeof ToolUseBlockSchema>;
 export type ToolResultBlock = z.infer<typeof ToolResultBlockSchema>;
+export type ContentBlock = z.infer<typeof ContentBlockSchema>;
+
+/**
+ * Narrowing a parsed block on its `type` does not work: {@link OtherBlockSchema}
+ * infers `type` as a plain string, so the union is not discriminated and a literal
+ * comparison excludes nothing. These key off each block's required field instead,
+ * which is exact rather than a heuristic — `z.object` strips unknown keys, so an
+ * unrecognized block carries only `type`, and the two schemas above reject a
+ * `tool_use` without an `id` or a `tool_result` without a `tool_use_id`.
+ *
+ * The invariant lives here, beside the schemas that establish it.
+ */
+export function isToolUseBlock(block: ContentBlock): block is ToolUseBlock {
+	return "id" in block;
+}
+
+export function isToolResultBlock(block: ContentBlock): block is ToolResultBlock {
+	return "tool_use_id" in block;
+}
 
 const InitEventSchema = z.object({
 	type: z.literal("system"),

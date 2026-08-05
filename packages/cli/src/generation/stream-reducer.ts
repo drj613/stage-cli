@@ -6,7 +6,12 @@ import {
 } from "@stagereview/types/generation";
 import { describeToolUse } from "./describe-tool-use.js";
 import { PhaseTracker } from "./phase-tracker.js";
-import { parseStreamEvent, type ResultEvent } from "./stream-events.js";
+import {
+	isToolResultBlock,
+	isToolUseBlock,
+	parseStreamEvent,
+	type ResultEvent,
+} from "./stream-events.js";
 
 interface MutableActivityEntry {
 	tool: string;
@@ -30,6 +35,11 @@ export class StreamReducer {
 	private dropped = 0;
 	private terminalResult: ResultEvent | null = null;
 
+	/**
+	 * `startedAt` must be a real epoch-ms timestamp: it is copied into every
+	 * snapshot, and `JobProgressSchema` requires a positive integer, so a zero or
+	 * relative value produces a snapshot the SPA refuses to parse.
+	 */
 	constructor(
 		private readonly repoRoot: string,
 		private readonly startedAt: number,
@@ -70,11 +80,8 @@ export class StreamReducer {
 				// Subagent traffic is not a top-level turn and not the main agent's work.
 				if (event.parent_tool_use_id != null) return;
 				this.turns += 1;
-				// An `id` marks a tool_use block: ingress rejects a tool_use missing one, and
-				// strips unknown keys from every other block. Narrowing on `type` cannot work —
-				// the unrecognized-block schema types it as a plain string, not a literal.
 				for (const block of event.message.content) {
-					if (!("id" in block)) continue;
+					if (!isToolUseBlock(block)) continue;
 					this.phases.observeToolUse(block.id, block.name, block.input);
 					const entry = this.push({
 						...describeToolUse(block.name, block.input, this.repoRoot),
@@ -86,9 +93,8 @@ export class StreamReducer {
 			}
 			case "user": {
 				if (event.parent_tool_use_id != null) return;
-				// Same narrowing as above, keyed on the tool_result block's own required field.
 				for (const block of event.message.content) {
-					if (!("tool_use_id" in block)) continue;
+					if (!isToolResultBlock(block)) continue;
 					const isError = block.is_error === true;
 					this.phases.observeToolResult(block.tool_use_id, isError);
 					const entry = this.entryByToolUseId.get(block.tool_use_id);
