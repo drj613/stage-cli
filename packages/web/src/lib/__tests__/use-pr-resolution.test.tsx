@@ -11,6 +11,7 @@ const ADDRESS = { owner: "o", repo: "r", number: "1" };
 const RESOLUTION_PATH = "/api/pull-requests/o/r/1";
 const RESOLUTION_QUERY_KEY = ["pr-resolution", "o", "r", "1"];
 const JOB_ID = "job-1";
+const PR_URL = "https://github.com/o/r/pull/1";
 
 /**
  * Serves GET RESOLUTION_PATH from `resolutions` (last entry repeats), POST
@@ -62,7 +63,18 @@ describe("usePrResolution — auto-generation gating", () => {
 		const postCalls: unknown[] = [];
 		installFetch({
 			resolutions: [{ state: "needs-generation" }],
-			poll: [{ id: JOB_ID, status: "running", runId: null, error: null, queuePosition: null }],
+			poll: [
+				{
+					id: JOB_ID,
+					prUrl: PR_URL,
+					status: "running",
+					requestedModel: "sonnet",
+					runId: null,
+					error: null,
+					queuePosition: null,
+					progress: null,
+				},
+			],
 			postCalls,
 		});
 		const wrapper = makeWrapper();
@@ -70,6 +82,8 @@ describe("usePrResolution — auto-generation gating", () => {
 		const { result } = renderHook(() => usePrResolution(ADDRESS), { wrapper: wrapper.Wrapper });
 
 		await waitFor(() => expect(postCalls).toHaveLength(1));
+		// Deliberately a literal, not PR_URL: this asserts the URL the hook builds
+		// from ADDRESS. Pointing it at the fixture's constant would make it a tautology.
 		expect(postCalls[0]).toEqual({ prUrl: "https://github.com/o/r/pull/1" });
 		await waitFor(() => expect(result.current.job?.status).toBeDefined());
 

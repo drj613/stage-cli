@@ -15,7 +15,17 @@ const RESOLUTION_PATH = "/api/pull-requests/o/r/1";
 const JOB_ID = "job-1";
 
 function job(over: Partial<GenerationJob> = {}): GenerationJob {
-	return { id: JOB_ID, status: "running", runId: null, error: null, queuePosition: null, ...over };
+	return {
+		id: JOB_ID,
+		prUrl: "https://github.com/o/r/pull/1",
+		status: "running",
+		requestedModel: "sonnet",
+		runId: null,
+		error: null,
+		queuePosition: null,
+		progress: null,
+		...over,
+	};
 }
 
 /**

@@ -6,10 +6,13 @@ import { deriveResolverView } from "../resolver-view";
 function job(overrides: Partial<GenerationJob>): GenerationJob {
 	return {
 		id: "job-1",
+		prUrl: "https://github.com/o/r/pull/1",
 		status: "running",
+		requestedModel: "sonnet",
 		runId: null,
 		error: null,
 		queuePosition: null,
+		progress: null,
 		...overrides,
 	};
 }
