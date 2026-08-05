@@ -176,9 +176,9 @@ const ABSOLUTE_PATH = /(?<![\w:/])\/[^\s'"|;&<>()]+/g;
  * wire type deliberately omits — straight to the browser.
  *
  * A token-level rewrite is enough because this is display text: nothing
- * downstream executes or resolves it. `AgentSession` runs the stderr it surfaces
- * through this too — a resolver error or stack trace names paths far more often
- * than a tool target does.
+ * downstream executes or resolves it. `AgentSession` runs the stderr it puts on
+ * the wire through this too — a resolver error or stack trace names paths far more
+ * often than a tool target does.
  */
 export function redactPaths(text: string, repoRoot: string): string {
 	return text.replace(ABSOLUTE_PATH, (match) => describePath(match, repoRoot));

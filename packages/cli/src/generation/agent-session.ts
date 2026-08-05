@@ -286,23 +286,27 @@ export class AgentSession {
 	 * Trims before sanitizing, exactly as `stream-events.ts` does and for the same
 	 * reason: sanitizing segments the string into graphemes, so on a multi-megabyte
 	 * line — which readline will happily buffer — it blocks the event loop for the
-	 * best part of a second to discard all but 200 characters. Redacting comes after
-	 * that trim for the same reason and before the final cap, so a rewritten path
-	 * shortens the line rather than being cut out of it.
+	 * best part of a second to discard all but 200 characters.
 	 *
-	 * The tee and the tail share one string: this text reaches the browser through
-	 * `job.error`, and there is no case for showing the operator a raw home
-	 * directory that the dashboard is not allowed to see.
+	 * The two sinks diverge, and only on paths. The tail becomes `job.error`, which
+	 * crosses into a browser, so its absolute paths are rewritten the way a tool
+	 * target's are — redacting after the trim keeps the walk bounded, and before the
+	 * cap so a shortened path spends its saving on message text. The tee goes to the
+	 * daemon's own terminal, where the operator owns the paths already and needs them
+	 * whole: an out-of-clone failure reduced to a basename is undiagnosable, so this
+	 * is the full-fidelity copy. Sanitizing is not part of that split — an escape
+	 * sequence reaching a terminal is the hazard `sanitizeText` exists for.
 	 */
 	private recordStderr(line: string): void {
-		const trimmed = sanitizeText(line.slice(0, STDERR_RAW_LIMIT));
-		const clean = redactPaths(trimmed, this.options.job.repoRoot).slice(0, STDERR_LINE_LIMIT);
+		const clean = sanitizeText(line.slice(0, STDERR_RAW_LIMIT));
 		if (clean === "") return;
-		this.stderrTail.push(clean);
+		const teed = clean.slice(0, STDERR_LINE_LIMIT);
+		const redacted = redactPaths(clean, this.options.job.repoRoot).slice(0, STDERR_LINE_LIMIT);
+		this.stderrTail.push(redacted);
 		if (this.stderrTail.length > STDERR_TAIL_LINES) this.stderrTail.shift();
 		if (this.stderrTeed < STDERR_TEE_LINES) {
 			this.stderrTeed += 1;
-			console.error(`${this.tag} ${clean}`);
+			console.error(`${this.tag} ${teed}`);
 		}
 	}
 

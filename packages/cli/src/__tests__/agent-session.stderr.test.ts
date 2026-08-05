@@ -92,7 +92,30 @@ describe("AgentSession stderr", () => {
 
 		expect(await message).toContain("ENOENT: no such file or directory, open src/a.ts");
 		expect(await message).not.toContain(JOB.repoRoot);
-		expect(logged).toEqual([`${TAG} ENOENT: no such file or directory, open src/a.ts`]);
+		expect(logged).toEqual([
+			`${TAG} ENOENT: no such file or directory, open ${JOB.repoRoot}/src/a.ts`,
+		]);
+	});
+
+	// The operator owns the machine and needs the whole path to diagnose an
+	// out-of-clone failure; the browser does not. Asserting both sinks from one
+	// line is what stops them quietly converging on the redacted form again.
+	it("redacts the wire but leaves the terminal at full fidelity", async () => {
+		const logged = captureLog();
+		const child = new FakeChild();
+		const run = makeSession(child).run();
+		const message = run.then(
+			() => "",
+			(err: Error) => err.message,
+		);
+		child.emit("spawn");
+		child.stderr.write(`could not stat ${JOB.repoRoot}/lib/deep/thing.ts\n`);
+		await flush();
+		child.close(1);
+
+		expect(await message).toContain("could not stat lib/deep/thing.ts");
+		expect(await message).not.toContain(JOB.repoRoot);
+		expect(logged).toEqual([`${TAG} could not stat ${JOB.repoRoot}/lib/deep/thing.ts`]);
 	});
 
 	it("reduces a path outside the clone to its basename", async () => {
