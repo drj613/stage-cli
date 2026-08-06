@@ -74,7 +74,7 @@ export async function runGenerationJob(
 		deps.db,
 		buildSyntheticChaptersFile(diff),
 		readRepoContext(job.repoRoot),
-		diff.prNumber,
+		diff.prNumber === null ? [] : [{ prNumber: diff.prNumber, headSha: diff.scope.headSha }],
 	);
 	onProgress(skippedProgress(startedAt, ACTIVITY_STATE.DONE));
 	return runId;

@@ -43,7 +43,9 @@ export function RunList() {
 				>
 					<BookOpen className="size-4 shrink-0 text-muted-foreground" />
 					<span className="min-w-0 flex-1 truncate font-medium text-sm">{run.repoName}</span>
-					{run.prNumber !== null && <Badge variant="outline">#{run.prNumber}</Badge>}
+					{run.prNumbers.length > 0 && (
+						<Badge variant="outline">{formatPrRange(run.prNumbers)}</Badge>
+					)}
 					<span className="shrink-0 text-muted-foreground text-xs">
 						{run.chapterCount} {run.chapterCount === 1 ? "chapter" : "chapters"}
 					</span>
@@ -54,4 +56,12 @@ export function RunList() {
 			))}
 		</div>
 	);
+}
+
+/** `#12` for one PR, `#12→#14` for a stack. Callers guard against an empty list. */
+function formatPrRange(prNumbers: number[]): string {
+	const first = prNumbers[0];
+	const last = prNumbers[prNumbers.length - 1];
+	if (first === undefined || last === undefined) throw new Error("empty prNumbers");
+	return first === last ? `#${first}` : `#${first}→#${last}`;
 }

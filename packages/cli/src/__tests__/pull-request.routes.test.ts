@@ -8,7 +8,7 @@ import type {
 } from "@stagereview/types/pull-request";
 import { describe, expect, it } from "vitest";
 import { getDb } from "../db/client.js";
-import { chapterRun } from "../db/schema/index.js";
+import { chapterRun, chapterRunPullRequest } from "../db/schema/index.js";
 import { pullRequestRoutes } from "../routes/pull-request.js";
 import { SCOPE_KIND } from "../schema.js";
 import { request, setupGhRouteTest } from "./gh-route-harness.js";
@@ -182,7 +182,6 @@ function insertRun(originUrl: string | null, prNumber: number | null = null): st
 		.values({
 			repoRoot: env.repoRoot,
 			originUrl,
-			prNumber,
 			scopeKind: SCOPE_KIND.COMMITTED,
 			workingTreeRef: null,
 			baseSha: SHA,
@@ -193,6 +192,11 @@ function insertRun(originUrl: string | null, prNumber: number | null = null): st
 		.returning({ id: chapterRun.id })
 		.all();
 	if (!row) throw new Error("seed: chapter_run insert returned no row");
+	if (prNumber !== null) {
+		db.insert(chapterRunPullRequest)
+			.values({ runId: row.id, prNumber, headSha: SHA, position: 0 })
+			.run();
+	}
 	return row.id;
 }
 

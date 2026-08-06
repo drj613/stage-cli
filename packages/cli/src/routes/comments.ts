@@ -15,6 +15,7 @@ import {
 	comment,
 	commentThread,
 } from "../db/schema/index.js";
+import { listRunPrNumbers } from "../runs/run-members.js";
 import { deriveScopeKey } from "../runs/scope-key.js";
 import type { Route } from "../server.js";
 import { parseJsonBody, writeJson } from "./json.js";
@@ -54,7 +55,7 @@ export function commentRoutes(db: StageDb): Route[] {
 						.insert(commentThread)
 						.values({
 							scopeKey: scope.scopeKey,
-							prNumber: scope.prNumber,
+							prNumber: scope.prNumbers[0] ?? null,
 							filePath: body.filePath,
 							side: body.side,
 							startLine: body.startLine,
@@ -211,7 +212,8 @@ export function commentRoutes(db: StageDb): Route[] {
 
 export interface RunCommentScope {
 	scopeKey: string;
-	prNumber: number | null;
+	/** PRs the requesting run reviews, bottom first. Empty for a local run. */
+	prNumbers: number[];
 }
 
 // Threads are anchored to a diff scope, not a run, so pending review comments and
@@ -230,21 +232,20 @@ export function resolveRunCommentScope(
 			baseSha: chapterRun.baseSha,
 			headSha: chapterRun.headSha,
 			mergeBaseSha: chapterRun.mergeBaseSha,
-			prNumber: chapterRun.prNumber,
 		})
 		.from(chapterRun)
 		.where(eq(chapterRun.id, runId))
 		.limit(1)
 		.all();
 	if (!run) return null;
-	return { scopeKey: deriveScopeKey(run), prNumber: run.prNumber };
+	return { scopeKey: deriveScopeKey(run), prNumbers: listRunPrNumbers(db, runId) };
 }
 
 function listThreads(db: StageDb, scope: RunCommentScope): CommentThreadDto[] {
 	const visible =
-		scope.prNumber === null
+		scope.prNumbers.length === 0
 			? isNull(commentThread.prNumber)
-			: or(isNull(commentThread.prNumber), eq(commentThread.prNumber, scope.prNumber));
+			: or(isNull(commentThread.prNumber), inArray(commentThread.prNumber, scope.prNumbers));
 	const threads = db
 		.select()
 		.from(commentThread)

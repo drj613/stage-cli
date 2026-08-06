@@ -2,9 +2,10 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { getDb, type StageDb } from "../db/client.js";
-import { chapter, chapterRun, keyChange } from "../db/schema/index.js";
+import { chapter, chapterRun, chapterRunPullRequest, keyChange } from "../db/schema/index.js";
 import { type RepoContext, readRepoContext } from "../git.js";
 import { type ChaptersFile, ChaptersFileSchema, SCOPE_KIND } from "../schema.js";
+import type { RunMember } from "./run-members.js";
 import { deriveScopeKey } from "./scope-key.js";
 
 export interface ImportChaptersResult {
@@ -25,13 +26,12 @@ export function insertChaptersFile(
 	db: StageDb,
 	file: ChaptersFile,
 	repo: RepoContext,
-	prNumber: number | null = null,
+	members: readonly RunMember[] = [],
 ): ImportChaptersResult {
 	return db.transaction((tx) => {
 		const runValues = {
 			repoRoot: repo.root,
 			originUrl: repo.originUrl,
-			prNumber,
 			scopeKind: file.scope.kind,
 			workingTreeRef: file.scope.kind === SCOPE_KIND.WORKING_TREE ? file.scope.ref : null,
 			baseSha: file.scope.baseSha,
@@ -43,6 +43,12 @@ export function insertChaptersFile(
 		const [runRow] = tx.insert(chapterRun).values(runValues).returning({ id: chapterRun.id }).all();
 		if (!runRow) throw new Error("chapter_run insert returned no row");
 		const runId = runRow.id;
+
+		members.forEach((member, position) => {
+			tx.insert(chapterRunPullRequest)
+				.values({ runId, prNumber: member.prNumber, headSha: member.headSha, position })
+				.run();
+		});
 
 		// Shares the run's flattened scope fields so the key matches what the
 		// comment routes derive from a chapter_run row.

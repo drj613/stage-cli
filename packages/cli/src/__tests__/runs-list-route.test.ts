@@ -47,7 +47,7 @@ describe("GET /api/runs", () => {
 				],
 			}),
 			makeRepoContext(),
-			42,
+			[{ prNumber: 42, headSha: "2".repeat(40) }],
 		);
 
 		const { port } = await env.startWithRoutes();
@@ -60,7 +60,7 @@ describe("GET /api/runs", () => {
 		const [newest, oldest] = body.runs;
 		expect(newest?.generatedAt).toBe("2026-04-27T12:00:00.000Z");
 		expect(newest?.chapterCount).toBe(3);
-		expect(newest?.prNumber).toBe(42);
+		expect(newest?.prNumbers).toEqual([42]);
 		expect(oldest?.generatedAt).toBe("2026-04-26T12:00:00.000Z");
 	});
 

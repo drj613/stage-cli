@@ -1,17 +1,18 @@
 import type { CommentThread } from "@stagereview/types/comments";
-import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { getDb } from "../db/client.js";
-import { chapterRun, commentThread } from "../db/schema/index.js";
+import { chapterRunPullRequest, commentThread } from "../db/schema/index.js";
 import { send, setupCommentRoutesTest } from "./comment-routes-harness.js";
 
 const env = setupCommentRoutesTest("stage-cli-comments-pr-");
 
-/** Seed a run and stamp a prNumber on it (insertChaptersFile has no PR path in fixtures). */
+/** Seed a run and record it as reviewing one PR (fixtures have no PR path). */
 function seedPrRun(prNumber: number): string {
 	const runId = env.seedRun();
 	const db = getDb({ dbPath: env.dbPath });
-	db.update(chapterRun).set({ prNumber }).where(eq(chapterRun.id, runId)).run();
+	db.insert(chapterRunPullRequest)
+		.values({ runId, prNumber, headSha: "2".repeat(40), position: 0 })
+		.run();
 	return runId;
 }
 

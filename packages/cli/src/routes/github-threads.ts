@@ -55,11 +55,12 @@ export function gitHubThreadRoutes(db: StageDb): Route[] {
 				const run = resolveRun(db, params, res);
 				if (!run) return;
 				const repo = parseGitHubRepo(run.originUrl);
-				if (!repo || run.prNumber === null) {
+				const prNumber = run.prNumbers[0];
+				if (!repo || prNumber === undefined) {
 					writeJson(res, 200, UNAVAILABLE);
 					return;
 				}
-				const threads = await fetchReviewThreads(run.repoRoot, repo, run.prNumber, run.headSha);
+				const threads = await fetchReviewThreads(run.repoRoot, repo, prNumber, run.headSha);
 				if (threads === null) {
 					writeJson(res, 200, UNAVAILABLE);
 					return;
@@ -76,8 +77,8 @@ export function gitHubThreadRoutes(db: StageDb): Route[] {
 				if (!run) return;
 				const repo = requireRepo(run, res);
 				if (!repo) return;
-				const prNumber = run.prNumber;
-				if (prNumber === null) {
+				const prNumber = run.prNumbers[0];
+				if (prNumber === undefined) {
 					writeJson(res, 400, { error: "Run has no associated pull request" });
 					return;
 				}
@@ -123,8 +124,8 @@ export function gitHubThreadRoutes(db: StageDb): Route[] {
 				const repo = requireRepo(run, res);
 				if (!repo) return;
 				const commentId = params.commentId;
-				const prNumber = run.prNumber;
-				if (prNumber === null || !commentId) {
+				const prNumber = run.prNumbers[0];
+				if (prNumber === undefined || !commentId) {
 					writeJson(res, 400, { error: "Run has no associated pull request" });
 					return;
 				}

@@ -56,7 +56,7 @@ export function browseRoutes(db: StageDb, registry: CloneRegistry): Route[] {
 				const index = RunIndex.load(db);
 				try {
 					const pullRequests = await listRepoPullRequests(nameWithOwner, process.cwd(), {
-						runIdFor: (r, n) => index.runIdFor(r, n),
+						runIdFor: (r, n) => index.singlePrRunIdFor(r, n),
 						cloned: registry.isCloned(nameWithOwner),
 					});
 					writeJson(res, 200, { available: true, pullRequests } satisfies RepoPullsResponse);

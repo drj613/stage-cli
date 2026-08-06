@@ -1,6 +1,7 @@
 export * from "./chapter.js";
 export * from "./chapter-file-view.js";
 export * from "./chapter-run.js";
+export * from "./chapter-run-pull-request.js";
 export * from "./chapter-view.js";
 export * from "./clone-root.js";
 export * from "./comment.js";

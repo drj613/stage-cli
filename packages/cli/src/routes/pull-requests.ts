@@ -53,7 +53,7 @@ export function pullRequestListRoutes(
 				writeJson(res, 200, {
 					available: true,
 					pullRequests: mapSearchResults(raw, {
-						runIdFor: (repo, prNumber) => index.runIdFor(repo, prNumber),
+						runIdFor: (repo, prNumber) => index.singlePrRunIdFor(repo, prNumber),
 						isCloned: (repo) => registry.isCloned(repo),
 					}),
 				} satisfies PullRequestListResponse);
@@ -82,7 +82,7 @@ export function pullRequestListRoutes(
 					return;
 				}
 
-				const run = RunIndex.load(db).latestRunFor(nameWithOwner, number);
+				const run = RunIndex.load(db).latestSinglePrRunFor(nameWithOwner, number);
 				if (run) {
 					let liveHead: string | null = null;
 					try {

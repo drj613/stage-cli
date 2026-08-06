@@ -20,7 +20,17 @@ export function pullRequestRoutes(db: StageDb): Route[] {
 			handler: async (_req, res, params) => {
 				const run = resolveRun(db, params, res);
 				if (!run) return;
-				const pullRequest = await getPullRequest(run.repoRoot, run.originUrl, run.prNumber);
+				// A local run has no PR and falls back to the checked-out branch's;
+				// only a stack has no single PR this route could describe.
+				if (run.prNumbers.length > 1) {
+					writeJson(res, 404, { error: "Run reviews a stack, not one pull request" });
+					return;
+				}
+				const pullRequest = await getPullRequest(
+					run.repoRoot,
+					run.originUrl,
+					run.prNumbers[0] ?? null,
+				);
 				const body: PullRequestResponse = { pullRequest };
 				writeJson(res, 200, body);
 			},
