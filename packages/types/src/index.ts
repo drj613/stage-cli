@@ -11,5 +11,6 @@ export * from "./pull-request.ts";
 export * from "./pull-requests.ts";
 export * from "./run-summary.ts";
 export * from "./scope.ts";
+export * from "./stacks.ts";
 export * from "./view-state.ts";
 export * from "./viewer.ts";

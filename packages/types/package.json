@@ -19,6 +19,7 @@
     "./pull-requests": "./src/pull-requests.ts",
     "./run-summary": "./src/run-summary.ts",
     "./scope": "./src/scope.ts",
+    "./stacks": "./src/stacks.ts",
     "./view-state": "./src/view-state.ts",
     "./viewer": "./src/viewer.ts"
   },
