@@ -3,6 +3,7 @@ export * from "./chapters.ts";
 export * from "./clone-roots.ts";
 export * from "./comments.ts";
 export * from "./diff.ts";
+export * from "./generate.ts";
 export * from "./generation.ts";
 export * from "./github-threads.ts";
 export * from "./parsed-diff.ts";

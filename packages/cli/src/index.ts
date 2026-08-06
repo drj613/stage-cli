@@ -39,8 +39,13 @@ interface DiffCommandOptions {
 	base?: string;
 	compare?: string;
 	ref?: string;
-	pr?: string;
+	/** One entry per `--pr` flag. More than one means a stack reviewed as one diff. */
+	pr: string[];
 }
+
+/** Commander collector for a repeatable option. */
+const collectPrRefs = (value: string, previous: string[]): string[] => [...previous, value];
+const NO_PR_REFS: string[] = [];
 
 /**
  * Adds the shared diff-scope arguments/options (refs, --base, --compare, --pr, --ref)
@@ -51,7 +56,12 @@ function withDiffScope(cmd: Command): Command {
 		.argument("[refs...]", "Git refs to diff, for example: main, main feature, or main..feature")
 		.option("--base <ref>", "Base ref to diff against (default: auto-detect main/master)")
 		.option("--compare <ref>", "Compare ref to diff against --base")
-		.option("--pr <ref>", "Review a GitHub pull request by number or URL")
+		.option(
+			"--pr <ref>",
+			"Review a GitHub pull request by number or URL. Repeat to review a stack.",
+			collectPrRefs,
+			NO_PR_REFS,
+		)
 		.addOption(refOption);
 }
 
@@ -60,7 +70,7 @@ function withDiffScope(cmd: Command): Command {
  * GitHub PR and so can't be combined with the local-ref selectors.
  */
 function toDiffScopeOptions(refs: string[], opts: DiffCommandOptions): DiffScopeOptions {
-	if (opts.pr !== undefined) {
+	if (opts.pr.length > 0) {
 		if (
 			refs.length > 0 ||
 			opts.base !== undefined ||
@@ -69,7 +79,7 @@ function toDiffScopeOptions(refs: string[], opts: DiffCommandOptions): DiffScope
 		) {
 			throw new Error("--pr cannot be combined with git refs, --base, --compare, or --ref.");
 		}
-		return { cwd: process.cwd(), pr: opts.pr };
+		return { cwd: process.cwd(), prRefs: opts.pr };
 	}
 	const workingTreeRef =
 		opts.ref !== undefined ? z.enum(WORKING_TREE_REF).parse(opts.ref) : undefined;

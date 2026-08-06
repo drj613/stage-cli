@@ -8,6 +8,7 @@ import { chapter, chapterRun } from "../db/schema/index.js";
 import { type GenerationDeps, runGenerationJob } from "../generation/claude-runner.js";
 import type { JobRequest } from "../generation/job-manager.js";
 import { type ResolvedFilteredDiff, resolveFilteredDiff } from "../resolve-diff.js";
+import { listRunMembers } from "../runs/run-members.js";
 import { FakeChild } from "./fake-child-process.js";
 import { initTempRepo, removeTempRepo, type TempRepo } from "./temp-repo.js";
 
@@ -20,7 +21,7 @@ const progress: JobProgress[] = [];
 
 function makeJob(): JobRequest {
 	return {
-		prUrl: "https://github.com/acme/widgets/pull/28",
+		prUrls: ["https://github.com/acme/widgets/pull/28"],
 		repoRoot: repo.dir,
 		requestedModel: "sonnet",
 	};
@@ -60,25 +61,33 @@ afterEach(async () => {
 describe("runGenerationJob", () => {
 	it("imports a synthetic run for a small diff without spawning an agent", async () => {
 		const db = getDb({ dbPath });
-		let resolvedFor: { cwd: string; pr?: string } | null = null;
+		let resolvedFor: { cwd: string; prRefs?: string[] } | null = null;
 		const deps = makeDeps({
 			db,
 			resolveDiff: async (options) => {
 				resolvedFor = options;
-				return smallDiff;
+				return { ...smallDiff, members: [{ prNumber: 28, headSha: smallDiff.scope.headSha }] };
 			},
 		});
 
 		const runId = await runGenerationJob(makeJob(), (p) => progress.push(p), deps);
 
 		expect(spawned).toEqual([]);
-		expect(resolvedFor).toEqual({ cwd: repo.dir, pr: "https://github.com/acme/widgets/pull/28" });
+		expect(resolvedFor).toEqual({
+			cwd: repo.dir,
+			prRefs: ["https://github.com/acme/widgets/pull/28"],
+		});
 		const runs = db.select().from(chapterRun).all();
 		expect(runs).toHaveLength(1);
 		expect(runs[0]?.id).toBe(runId);
 		// The run must record the clone, not the daemon's working directory, or every
 		// later diff route reads the wrong repo.
 		expect(runs[0]?.repoRoot).toBe(repo.dir);
+		// The synthetic path inserts membership too — a run that skipped the agent
+		// still has to resolve back to its PR from the dashboard.
+		expect(listRunMembers(db, runId)).toEqual([
+			{ prNumber: 28, headSha: smallDiff.scope.headSha, position: 0 },
+		]);
 		expect(
 			db
 				.select()

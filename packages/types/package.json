@@ -11,6 +11,7 @@
     "./clone-roots": "./src/clone-roots.ts",
     "./comments": "./src/comments.ts",
     "./diff": "./src/diff.ts",
+    "./generate": "./src/generate.ts",
     "./generation": "./src/generation.ts",
     "./github-threads": "./src/github-threads.ts",
     "./parsed-diff": "./src/parsed-diff.ts",

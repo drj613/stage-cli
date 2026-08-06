@@ -10,13 +10,13 @@ describe("generate routes", () => {
 
 	it("queues a job against the repo root of a past run", async () => {
 		const res = await requestJson(env.port(), "POST", "/api/generate", {
-			prUrl: "https://github.com/acme/widgets/pull/7",
+			prUrls: ["https://github.com/acme/widgets/pull/7"],
 		});
 		expect(res.status).toBe(202);
 		await env.jobs.settled();
 		expect(env.requested).toMatchObject([
 			{
-				prUrl: "https://github.com/acme/widgets/pull/7",
+				prUrls: ["https://github.com/acme/widgets/pull/7"],
 				repoRoot: env.knownRepoRoot,
 				requestedModel: "sonnet",
 			},
@@ -26,7 +26,7 @@ describe("generate routes", () => {
 
 	it("reports job status once finished", async () => {
 		const res = await requestJson(env.port(), "POST", "/api/generate", {
-			prUrl: "https://github.com/acme/widgets/pull/7",
+			prUrls: ["https://github.com/acme/widgets/pull/7"],
 		});
 		await env.jobs.settled();
 		const jobId = expectJobId(res.body);
@@ -36,7 +36,7 @@ describe("generate routes", () => {
 		// and must never appear in a response.
 		expect(status.body).toEqual({
 			id: jobId,
-			prUrl: "https://github.com/acme/widgets/pull/7",
+			prUrls: ["https://github.com/acme/widgets/pull/7"],
 			status: "succeeded",
 			requestedModel: "sonnet",
 			runId: "run-abc",
@@ -53,7 +53,7 @@ describe("generate routes", () => {
 		addCloneRoot(env.db, rootsDir);
 		env.registry.rescan();
 		const res = await requestJson(env.port(), "POST", "/api/generate", {
-			prUrl: "https://github.com/acme/gadgets/pull/3",
+			prUrls: ["https://github.com/acme/gadgets/pull/3"],
 		});
 		expect(res.status).toBe(202);
 		await env.jobs.settled();
@@ -62,7 +62,7 @@ describe("generate routes", () => {
 
 	it("rejects repos with no known local clone", async () => {
 		const res = await requestJson(env.port(), "POST", "/api/generate", {
-			prUrl: "https://github.com/other/thing/pull/1",
+			prUrls: ["https://github.com/other/thing/pull/1"],
 		});
 		expect(res.status).toBe(422);
 		expect(env.requested).toEqual([]);
@@ -70,7 +70,7 @@ describe("generate routes", () => {
 
 	it("400s a URL that is not a github.com PR", async () => {
 		const res = await requestJson(env.port(), "POST", "/api/generate", {
-			prUrl: "https://gitlab.com/acme/widgets/-/merge_requests/7",
+			prUrls: ["https://gitlab.com/acme/widgets/-/merge_requests/7"],
 		});
 		expect(res.status).toBe(400);
 		expect(env.requested).toEqual([]);
@@ -84,7 +84,7 @@ describe("generate routes", () => {
 
 	it("400s an unknown model", async () => {
 		const res = await requestJson(env.port(), "POST", "/api/generate", {
-			prUrl: "https://github.com/acme/widgets/pull/7",
+			prUrls: ["https://github.com/acme/widgets/pull/7"],
 			model: "gpt",
 		});
 		expect(res.status).toBe(400);

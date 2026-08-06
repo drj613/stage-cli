@@ -52,7 +52,7 @@ export async function runGenerationJob(
 	deps: GenerationDeps,
 ): Promise<string> {
 	const startedAt = deps.now();
-	const diff = await deps.resolveDiff({ cwd: job.repoRoot, pr: job.prUrl });
+	const diff = await deps.resolveDiff({ cwd: job.repoRoot, prRefs: job.prUrls });
 
 	if (shouldGenerateChapters(diff.stats)) {
 		return new AgentSession({
@@ -74,7 +74,7 @@ export async function runGenerationJob(
 		deps.db,
 		buildSyntheticChaptersFile(diff),
 		readRepoContext(job.repoRoot),
-		diff.prNumber === null ? [] : [{ prNumber: diff.prNumber, headSha: diff.scope.headSha }],
+		diff.members,
 	);
 	onProgress(skippedProgress(startedAt, ACTIVITY_STATE.DONE));
 	return runId;

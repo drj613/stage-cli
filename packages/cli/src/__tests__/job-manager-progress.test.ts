@@ -29,7 +29,7 @@ function blockedManager() {
 		return "run-1";
 	});
 	const id = manager.enqueue({
-		prUrl: "https://github.com/o/r/pull/1",
+		prUrls: ["https://github.com/o/r/pull/1"],
 		repoRoot: REPO_ROOT,
 		requestedModel: "sonnet",
 	});

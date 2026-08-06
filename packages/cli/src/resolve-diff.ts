@@ -2,6 +2,7 @@ import type { PullRequestFile } from "@stagereview/types/parsed-diff";
 import { parseGitDiff } from "./diff-parser.js";
 import { filterFilesForLlm, loadStageIgnore } from "./filter-files.js";
 import { readRepoRoot } from "./git.js";
+import type { RunMember } from "./runs/run-members.js";
 import type { Scope } from "./schema.js";
 import { type DiffScopeOptions, resolveDiffScope } from "./scope.js";
 
@@ -15,8 +16,8 @@ export interface FilteredDiffStats {
 
 export interface ResolvedFilteredDiff {
 	scope: Scope;
-	/** The reviewed PR's number when `--pr` was used, else null. */
-	prNumber: number | null;
+	/** The reviewed PRs in stack order, bottom first. Empty for a local-ref scope. */
+	members: RunMember[];
 	mergeBaseSha: string;
 	/** Every file in the diff, including the ones excluded from review. */
 	allFiles: PullRequestFile[];
@@ -35,13 +36,13 @@ export interface ResolvedFilteredDiff {
 export async function resolveFilteredDiff(
 	options: DiffScopeOptions,
 ): Promise<ResolvedFilteredDiff> {
-	const { scope, rawDiff, mergeBaseSha, prNumber } = await resolveDiffScope(options);
+	const { scope, rawDiff, mergeBaseSha, members } = await resolveDiffScope(options);
 
 	const allFiles = parseGitDiff(rawDiff);
 	const stageIgnore = loadStageIgnore(readRepoRoot(options.cwd));
 	const { files, excludedByPath } = filterFilesForLlm(allFiles, stageIgnore);
 
-	return { scope, prNumber, mergeBaseSha, allFiles, files, excludedByPath, stats: statsFor(files) };
+	return { scope, members, mergeBaseSha, allFiles, files, excludedByPath, stats: statsFor(files) };
 }
 
 function statsFor(files: PullRequestFile[]): FilteredDiffStats {

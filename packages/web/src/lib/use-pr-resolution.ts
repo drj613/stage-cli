@@ -1,3 +1,4 @@
+import type { GenerateRequest } from "@stagereview/types/generate";
 import {
 	GenerateAcceptedSchema,
 	type GenerationJob,
@@ -39,10 +40,13 @@ function jobQueryKey(jobId: string | null): readonly unknown[] {
  * "no local clone for this repo" (422) reaches the user verbatim.
  */
 async function startGeneration(prUrl: string): Promise<string> {
+	// Typed against the shared schema so a change to the request shape is a
+	// compile error here rather than a runtime 400 from an inline object.
+	const body: GenerateRequest = { prUrls: [prUrl] };
 	const res = await fetch("/api/generate", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ prUrl }),
+		body: JSON.stringify(body),
 	});
 	const raw: unknown = await res.json();
 	if (!res.ok) {

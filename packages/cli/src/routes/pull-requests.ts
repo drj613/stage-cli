@@ -73,7 +73,7 @@ export function pullRequestListRoutes(
 				const nameWithOwner = toNameWithOwner(location);
 				const prUrl = toPullRequestUrl(location);
 
-				const active = jobs.activeJobFor(prUrl);
+				const active = jobs.activeJobFor([prUrl]);
 				if (active) {
 					writeJson(res, 200, {
 						state: PR_RESOLUTION.GENERATING,
@@ -106,7 +106,7 @@ export function pullRequestListRoutes(
 					return;
 				}
 
-				const latest = jobs.latestJobFor(prUrl);
+				const latest = jobs.latestJobFor([prUrl]);
 				if (latest?.status === JOB_STATUS.FAILED) {
 					writeJson(res, 200, {
 						state: PR_RESOLUTION.FAILED,

@@ -64,7 +64,7 @@ export interface AgentSessionOptions {
  */
 export function promptFor(job: JobRequest): string {
 	return [
-		`/stage-chapters --pr ${job.prUrl}`,
+		`/stage-chapters ${job.prUrls.map((url) => `--pr ${url}`).join(" ")}`,
 		"IMPORTANT: this is a headless run for the Stage dashboard.",
 		`The repository root is ${job.repoRoot}. Every \`stagereview\` command must run from there:`,
 		`prefix each one with \`cd ${job.repoRoot} && \`, including \`prep\` and \`import\`.`,
@@ -137,7 +137,7 @@ export class AgentSession {
 	}
 
 	private get tag(): string {
-		return `[stage:generate] ${this.options.job.prUrl}`;
+		return `[stage:generate] ${this.options.job.prUrls.join(", ")}`;
 	}
 
 	/** One session, one process. A second call could never settle. */

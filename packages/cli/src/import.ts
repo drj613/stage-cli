@@ -15,8 +15,7 @@ export async function runImport(
 	options: DiffScopeOptions,
 	db: StageDb = getDb(),
 ): Promise<string> {
-	const { chaptersFile, prNumber } = await buildChaptersFile(jsonPath, options);
-	const members = prNumber === null ? [] : [{ prNumber, headSha: chaptersFile.scope.headSha }];
+	const { chaptersFile, members } = await buildChaptersFile(jsonPath, options);
 	const { runId } = insertChaptersFile(db, chaptersFile, readRepoContext(options.cwd), members);
 	return runId;
 }

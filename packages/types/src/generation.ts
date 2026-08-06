@@ -131,7 +131,8 @@ export type JobProgress = z.infer<typeof JobProgressSchema>;
 export const GenerationJobSchema = z.object({
 	id: z.string(),
 	/** Canonical PR URL, so the dashboard can match a job to a row. */
-	prUrl: z.url(),
+	/** The PRs this job chapters, in stack order. One entry is a single-PR run. */
+	prUrls: z.array(z.url()).min(1),
 	status: z.enum(JOB_STATUS),
 	/** Known at enqueue time, so it is present even while queued. */
 	requestedModel: z.enum(GENERATION_MODEL),

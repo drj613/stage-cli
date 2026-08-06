@@ -7,18 +7,18 @@ describe("JobManager", () => {
 	it("runs jobs sequentially", async () => {
 		const order: string[] = [];
 		const manager = new JobManager(async (job) => {
-			order.push(`start:${job.prUrl}`);
+			order.push(`start:${job.prUrls[0]}`);
 			await new Promise((r) => setTimeout(r, 10));
-			order.push(`end:${job.prUrl}`);
+			order.push(`end:${job.prUrls[0]}`);
 			return "run-1";
 		});
 		const a = manager.enqueue({
-			prUrl: "https://github.com/a/a/pull/1",
+			prUrls: ["https://github.com/a/a/pull/1"],
 			repoRoot: "/a",
 			requestedModel: "sonnet",
 		});
 		const b = manager.enqueue({
-			prUrl: "https://github.com/b/b/pull/2",
+			prUrls: ["https://github.com/b/b/pull/2"],
 			repoRoot: "/b",
 			requestedModel: "sonnet",
 		});
@@ -34,18 +34,40 @@ describe("JobManager", () => {
 		expect(manager.get(b)?.status).toBe("succeeded");
 	});
 
+	it("does not reuse a stack job for a single PR that shares its tip", () => {
+		const manager = new JobManager(() => new Promise<string>(() => {}));
+		const tip = "https://github.com/o/r/pull/14";
+		manager.enqueue({
+			prUrls: ["https://github.com/o/r/pull/13", tip],
+			repoRoot: "/o",
+			requestedModel: "sonnet",
+		});
+
+		// The stack and the tip alone are different work: reusing one for the other
+		// would drop the user into a chain they did not ask for.
+		expect(manager.activeJobFor([tip])).toBeNull();
+	});
+
+	it("reuses the job covering the same members", () => {
+		const manager = new JobManager(() => new Promise<string>(() => {}));
+		const members = ["https://github.com/o/r/pull/13", "https://github.com/o/r/pull/14"];
+		const id = manager.enqueue({ prUrls: members, repoRoot: "/o", requestedModel: "sonnet" });
+
+		expect(manager.activeJobFor([...members])?.id).toBe(id);
+	});
+
 	it("records failures without stopping the queue", async () => {
 		const manager = new JobManager(async (job) => {
-			if (job.prUrl.includes("bad")) throw new Error("boom");
+			if (job.prUrls.some((url) => url.includes("bad"))) throw new Error("boom");
 			return "run-2";
 		});
 		const bad = manager.enqueue({
-			prUrl: "https://github.com/x/x/pull/9?bad",
+			prUrls: ["https://github.com/x/x/pull/9?bad"],
 			repoRoot: "/x",
 			requestedModel: "sonnet",
 		});
 		const good = manager.enqueue({
-			prUrl: "https://github.com/y/y/pull/3",
+			prUrls: ["https://github.com/y/y/pull/3"],
 			repoRoot: "/y",
 			requestedModel: "sonnet",
 		});
@@ -64,7 +86,7 @@ describe("JobManager", () => {
 			throw new Error("claude exited with code 1");
 		});
 		manager.enqueue({
-			prUrl: "https://github.com/x/x/pull/9",
+			prUrls: ["https://github.com/x/x/pull/9"],
 			repoRoot: "/Users/secret/private-repo",
 			requestedModel: "sonnet",
 		});
@@ -83,21 +105,21 @@ describe("JobManager queuePosition", () => {
 		const manager = new JobManager(
 			(job) =>
 				new Promise((resolve) => {
-					releases.push(() => resolve(`run-${job.prUrl}`));
+					releases.push(() => resolve(`run-${job.prUrls[0]}`));
 				}),
 		);
 		const first = manager.enqueue({
-			prUrl: "https://github.com/o/r/pull/1",
+			prUrls: ["https://github.com/o/r/pull/1"],
 			repoRoot: "/o",
 			requestedModel: "sonnet",
 		});
 		const second = manager.enqueue({
-			prUrl: "https://github.com/o/r/pull/2",
+			prUrls: ["https://github.com/o/r/pull/2"],
 			repoRoot: "/o",
 			requestedModel: "sonnet",
 		});
 		const third = manager.enqueue({
-			prUrl: "https://github.com/o/r/pull/3",
+			prUrls: ["https://github.com/o/r/pull/3"],
 			repoRoot: "/o",
 			requestedModel: "sonnet",
 		});
@@ -123,25 +145,29 @@ describe("JobManager.latestJobFor", () => {
 		const manager = new JobManager(async () => {
 			throw new Error("boom");
 		});
-		const failedId = manager.enqueue({ prUrl: PR_URL, repoRoot: "/o", requestedModel: "sonnet" });
+		const failedId = manager.enqueue({
+			prUrls: [PR_URL],
+			repoRoot: "/o",
+			requestedModel: "sonnet",
+		});
 		await manager.settled();
 
-		expect(manager.activeJobFor(PR_URL)).toBeNull(); // terminal jobs stay invisible here
-		expect(manager.latestJobFor(PR_URL)?.id).toBe(failedId);
-		expect(manager.latestJobFor(PR_URL)?.status).toBe("failed");
-		expect(manager.latestJobFor("https://github.com/o/r/pull/999")).toBeNull();
+		expect(manager.activeJobFor([PR_URL])).toBeNull(); // terminal jobs stay invisible here
+		expect(manager.latestJobFor([PR_URL])?.id).toBe(failedId);
+		expect(manager.latestJobFor([PR_URL])?.status).toBe("failed");
+		expect(manager.latestJobFor(["https://github.com/o/r/pull/999"])).toBeNull();
 	});
 
 	it("prefers the second job over the first when a PR was retried", async () => {
 		const PR_URL = "https://github.com/o/r/pull/42";
 		const manager = new JobManager(async () => "run-retry");
-		const first = manager.enqueue({ prUrl: PR_URL, repoRoot: "/o", requestedModel: "sonnet" });
+		const first = manager.enqueue({ prUrls: [PR_URL], repoRoot: "/o", requestedModel: "sonnet" });
 		await manager.settled();
-		const second = manager.enqueue({ prUrl: PR_URL, repoRoot: "/o", requestedModel: "sonnet" });
+		const second = manager.enqueue({ prUrls: [PR_URL], repoRoot: "/o", requestedModel: "sonnet" });
 		await manager.settled();
 
 		expect(first).not.toBe(second);
-		expect(manager.latestJobFor(PR_URL)?.id).toBe(second);
+		expect(manager.latestJobFor([PR_URL])?.id).toBe(second);
 	});
 });
 
@@ -156,16 +182,16 @@ describe("JobManager.activeJobFor", () => {
 			return "run-1";
 		});
 		const id = manager.enqueue({
-			prUrl: "https://github.com/Acme/Widgets/pull/7",
+			prUrls: ["https://github.com/Acme/Widgets/pull/7"],
 			repoRoot: "/a",
 			requestedModel: "sonnet",
 		});
 
-		expect(manager.activeJobFor("https://github.com/acme/widgets/pull/7")?.id).toBe(id);
-		expect(manager.activeJobFor("https://github.com/acme/widgets/pull/8")).toBeNull();
+		expect(manager.activeJobFor(["https://github.com/acme/widgets/pull/7"])?.id).toBe(id);
+		expect(manager.activeJobFor(["https://github.com/acme/widgets/pull/8"])).toBeNull();
 
 		release();
 		await manager.settled();
-		expect(manager.activeJobFor("https://github.com/Acme/Widgets/pull/7")).toBeNull();
+		expect(manager.activeJobFor(["https://github.com/Acme/Widgets/pull/7"])).toBeNull();
 	});
 });

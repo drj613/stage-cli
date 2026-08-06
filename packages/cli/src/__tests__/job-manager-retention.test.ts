@@ -4,7 +4,7 @@ import { JobManager, MAX_RETAINED_PRS } from "../generation/job-manager.js";
 const prUrl = (n: number) => `https://github.com/o/r/pull/${n}`;
 
 function enqueue(manager: JobManager, n: number): string {
-	return manager.enqueue({ prUrl: prUrl(n), repoRoot: "/o", requestedModel: "sonnet" });
+	return manager.enqueue({ prUrls: [prUrl(n)], repoRoot: "/o", requestedModel: "sonnet" });
 }
 
 describe("JobManager retention", () => {
@@ -17,7 +17,7 @@ describe("JobManager retention", () => {
 
 		expect(manager.get(first)).toBeNull();
 		expect(manager.get(second)?.status).toBe("succeeded");
-		expect(manager.latestJobFor(prUrl(1))?.id).toBe(second);
+		expect(manager.latestJobFor([prUrl(1)])?.id).toBe(second);
 	});
 
 	it("evicts the least recently finished PR once the cap is exceeded", async () => {

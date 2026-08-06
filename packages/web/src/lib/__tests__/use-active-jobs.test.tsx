@@ -19,7 +19,7 @@ import { RUNS_QUERY_KEY } from "../use-runs";
 function job(over: Partial<GenerationJob> = {}): GenerationJob {
 	return {
 		id: "job-1",
-		prUrl: "https://github.com/o/r/pull/1",
+		prUrls: ["https://github.com/o/r/pull/1"],
 		status: "running",
 		requestedModel: "sonnet",
 		runId: null,
@@ -153,7 +153,7 @@ describe("activeJobsPollInterval", () => {
 
 describe("findJobForPr", () => {
 	it("matches the PR URL case-insensitively, as the server does", () => {
-		const jobs = [job({ prUrl: "https://github.com/Owner/Repo/pull/7" })];
+		const jobs = [job({ prUrls: ["https://github.com/Owner/Repo/pull/7"] })];
 
 		expect(findJobForPr(jobs, "https://github.com/owner/repo/pull/7")?.id).toBe("job-1");
 	});
