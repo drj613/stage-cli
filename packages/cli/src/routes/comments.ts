@@ -50,12 +50,26 @@ export function commentRoutes(db: StageDb): Route[] {
 				const body = await parseJsonBody(req, res, CreateCommentThreadBodySchema);
 				if (!body) return;
 
+				// A stack has no default target: picking the bottom PR silently would
+				// file feedback against work the author is not looking at.
+				if (scope.prNumbers.length > 1 && body.prNumber === undefined) {
+					writeJson(res, 400, {
+						error: "This run reviews a stack — name the pull request this comment is for",
+					});
+					return;
+				}
+				const target = body.prNumber ?? scope.prNumbers[0] ?? null;
+				if (target !== null && !scope.prNumbers.includes(target)) {
+					writeJson(res, 400, { error: `Run does not review pull request #${target}` });
+					return;
+				}
+
 				const created = db.transaction((tx) => {
 					const [threadRow] = tx
 						.insert(commentThread)
 						.values({
 							scopeKey: scope.scopeKey,
-							prNumber: scope.prNumbers[0] ?? null,
+							prNumber: target,
 							filePath: body.filePath,
 							side: body.side,
 							startLine: body.startLine,

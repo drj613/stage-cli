@@ -6,13 +6,15 @@ import { send, setupCommentRoutesTest } from "./comment-routes-harness.js";
 
 const env = setupCommentRoutesTest("stage-cli-comments-pr-");
 
-/** Seed a run and record it as reviewing one PR (fixtures have no PR path). */
-function seedPrRun(prNumber: number): string {
+/** Seed a run and record which PRs it reviews (fixtures have no PR path). */
+function seedPrRun(...prNumbers: number[]): string {
 	const runId = env.seedRun();
 	const db = getDb({ dbPath: env.dbPath });
-	db.insert(chapterRunPullRequest)
-		.values({ runId, prNumber, headSha: "2".repeat(40), position: 0 })
-		.run();
+	prNumbers.forEach((prNumber, position) => {
+		db.insert(chapterRunPullRequest)
+			.values({ runId, prNumber, headSha: "2".repeat(40), position })
+			.run();
+	});
 	return runId;
 }
 
@@ -62,5 +64,49 @@ describe("pending review comments (PR runs)", () => {
 		await env.createThread(port, run7, { body: "for pr 7" });
 		const list = await send(port, "GET", `/api/runs/${run8}/comment-threads`);
 		expect((list.body as CommentThread[]).length).toBe(0);
+	});
+
+	it("rejects a comment aimed at a pull request the run does not review", async () => {
+		const runId = seedPrRun(7);
+		const { port } = await env.startWithRoutes();
+		const res = await send(port, "POST", `/api/runs/${runId}/comment-threads`, {
+			filePath: "src/foo.ts",
+			side: "additions",
+			startLine: 1,
+			endLine: 1,
+			body: "why?",
+			prNumber: 99,
+		});
+		expect(res.status).toBe(400);
+	});
+
+	it("refuses an untargeted comment on a stack run rather than guessing", async () => {
+		const runId = seedPrRun(12, 13);
+		const { port } = await env.startWithRoutes();
+		const res = await send(port, "POST", `/api/runs/${runId}/comment-threads`, {
+			filePath: "src/foo.ts",
+			side: "additions",
+			startLine: 1,
+			endLine: 1,
+			body: "why?",
+		});
+		expect(res.status).toBe(400);
+	});
+
+	it("stores the chosen member on a stack run's thread", async () => {
+		const runId = seedPrRun(12, 13);
+		const { port } = await env.startWithRoutes();
+		const res = await send(port, "POST", `/api/runs/${runId}/comment-threads`, {
+			filePath: "src/foo.ts",
+			side: "additions",
+			startLine: 1,
+			endLine: 1,
+			body: "why?",
+			prNumber: 13,
+		});
+		expect(res.status).toBe(201);
+		const db = getDb({ dbPath: env.dbPath });
+		const [row] = db.select().from(commentThread).all();
+		expect(row?.prNumber).toBe(13);
 	});
 });
