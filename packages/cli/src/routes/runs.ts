@@ -1,10 +1,12 @@
 import type { Chapter, ChapterRun, KeyChange } from "@stagereview/types/chapters";
 import type { RunListResponse, RunSummary } from "@stagereview/types/run-summary";
+import type { MemberFilesResponse } from "@stagereview/types/stacks";
 import { asc, count, desc, eq, inArray } from "drizzle-orm";
 import type { StageDb } from "../db/client.js";
 import { chapter, chapterRun, keyChange } from "../db/schema/index.js";
 import { parseRepoName } from "../git.js";
 import { parseGitHubRepo, toNameWithOwner } from "../github/repo.js";
+import { filePullRequests } from "../runs/member-files.js";
 import { listRunMembers, listRunPrNumbers } from "../runs/run-members.js";
 import type { Route } from "../server.js";
 import { writeJson } from "./json.js";
@@ -85,6 +87,25 @@ export function runRoutes(db: StageDb): Route[] {
 					),
 				};
 				writeJson(res, 200, body);
+			},
+		},
+		{
+			method: "GET",
+			pattern: "/api/runs/:runId/member-files",
+			handler: (_req, res, params) => {
+				const runId = params.runId;
+				const [run] = runId
+					? db.select().from(chapterRun).where(eq(chapterRun.id, runId)).limit(1).all()
+					: [];
+				if (!run || !runId) {
+					writeJson(res, 404, { error: `Run ${params.runId} not found` });
+					return;
+				}
+				const members = listRunMembers(db, runId);
+				const byPath = filePullRequests(run.repoRoot, members, run.baseSha);
+				writeJson(res, 200, {
+					filePullRequests: Object.fromEntries(byPath),
+				} satisfies MemberFilesResponse);
 			},
 		},
 		{

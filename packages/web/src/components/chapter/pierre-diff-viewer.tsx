@@ -49,6 +49,7 @@ import {
 } from "@/lib/merge-threads";
 import { resolveSyntaxTheme } from "@/lib/syntax-themes";
 import { useDiffSettings } from "@/lib/use-diff-settings";
+import { useMemberFiles } from "@/lib/use-member-files";
 import { toSingleSideSelection, useTextSelection } from "@/lib/use-text-selection";
 import { LineHighlightOverlay } from "./hunk-highlight-overlay";
 import { TextSelectionPopup } from "./text-selection-popup";
@@ -201,12 +202,24 @@ export function PierreDiffViewer({
 
 	// ---- Line-anchored comments ----
 	const comments = useCommentThreadsContext();
-	const { createThread, pullRequests } = comments;
+	const { createThread, pullRequests, runId } = comments;
 	// A stack run has no default target — the server rejects an untargeted
 	// comment rather than filing it against a PR the author is not reading.
 	const isStack = pullRequests.length > 1;
+	const memberFiles = useMemberFiles(runId, isStack);
+	// Only the members that touched this file: offering one that never did would
+	// file feedback where nobody is looking, and GitHub would reject it anyway.
+	// Falls back to every member when the mapping has not loaded.
+	const fileOwners = filePath === undefined ? undefined : memberFiles.get(filePath);
+	const targetOptions =
+		fileOwners && fileOwners.length > 0
+			? pullRequests.filter((pr) => fileOwners.includes(pr.number))
+			: pullRequests;
 	const [targetPrNumber, setTargetPrNumber] = useState<number | null>(null);
-	const effectiveTarget = targetPrNumber ?? pullRequests[0]?.number ?? null;
+	const effectiveTarget =
+		targetPrNumber !== null && targetOptions.some((pr) => pr.number === targetPrNumber)
+			? targetPrNumber
+			: (targetOptions[0]?.number ?? null);
 	const fileThreads = useMemo(
 		() => (filePath ? (comments.merged.byFile.get(filePath) ?? []) : []),
 		[comments.merged, filePath],
@@ -311,7 +324,7 @@ export function PierreDiffViewer({
 							header={
 								isStack ? (
 									<StackTargetSelect
-										pullRequests={pullRequests}
+										pullRequests={targetOptions}
 										value={effectiveTarget}
 										onChange={setTargetPrNumber}
 									/>
@@ -339,7 +352,7 @@ export function PierreDiffViewer({
 			handleThreadMouseEnter,
 			handleThreadMouseLeave,
 			isStack,
-			pullRequests,
+			targetOptions,
 			effectiveTarget,
 		],
 	);

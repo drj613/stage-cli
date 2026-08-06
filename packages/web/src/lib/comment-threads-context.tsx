@@ -16,6 +16,8 @@ export interface CommentThreadsContextValue extends UseCommentThreadsResult {
 	 * untargeted comment on a stack rather than guessing.
 	 */
 	pullRequests: readonly { number: number; headSha: string }[];
+	/** The run these threads belong to — consumers need it for run-scoped fetches. */
+	runId: string;
 }
 
 const CommentThreadsContext = createContext<CommentThreadsContextValue | null>(null);
@@ -71,8 +73,8 @@ export function CommentThreadsProvider({
 		[threads, github.available, github.threads],
 	);
 	const value = useMemo<CommentThreadsContextValue>(
-		() => ({ ...local, github, merged, pullRequests }),
-		[local, github, merged, pullRequests],
+		() => ({ ...local, github, merged, pullRequests, runId }),
+		[local, github, merged, pullRequests, runId],
 	);
 
 	useLoadErrorToast(local.error, LOAD_ERROR_TOAST_ID, "Couldn't load comments");

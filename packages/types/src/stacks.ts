@@ -29,3 +29,12 @@ export const StackResponseSchema = z.discriminatedUnion("available", [
 	z.object({ available: z.literal(true), graph: StackGraphSchema }),
 ]);
 export type StackResponse = z.infer<typeof StackResponseSchema>;
+
+/**
+ * Which member PRs changed each file, keyed by path. Only meaningful for a run
+ * that reviews a stack; a single-PR run's answer is always "the one PR".
+ */
+export const MemberFilesResponseSchema = z.object({
+	filePullRequests: z.record(z.string(), z.array(z.number())),
+});
+export type MemberFilesResponse = z.infer<typeof MemberFilesResponseSchema>;

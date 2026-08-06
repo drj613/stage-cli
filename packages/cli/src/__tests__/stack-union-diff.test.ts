@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveCommittedComparison } from "../git.js";
 import { gitIsAncestor, orderMembersByAncestry } from "../github/stack-refs.js";
+import { filePullRequests } from "../runs/member-files.js";
 
 /**
  * The union diff is the whole point of a stack run, and it is the one part that
@@ -104,5 +105,31 @@ describe("union diff across a real stack", () => {
 				gitIsAncestor(dir),
 			),
 		).toThrow(/not stacked on/);
+	});
+});
+
+describe("filePullRequests", () => {
+	it("attributes each file to the member that changed it", async () => {
+		const base = await commitFile("base.txt", "base\n", "base");
+		git("checkout", "-b", "feat/a");
+		const a = await commitFile("a.txt", "a\n", "add a");
+		git("checkout", "-b", "feat/b");
+		// #13 adds its own file and also edits #12's.
+		await fs.writeFile(path.join(dir, "a.txt"), "a edited\n");
+		const b = await commitFile("b.txt", "b\n", "add b, edit a");
+
+		const byPath = filePullRequests(
+			dir,
+			[
+				{ prNumber: 12, headSha: a, position: 0 },
+				{ prNumber: 13, headSha: b, position: 1 },
+			],
+			base,
+		);
+
+		// A file touched by both members lists both, in stack order.
+		expect(byPath.get("a.txt")).toEqual([12, 13]);
+		expect(byPath.get("b.txt")).toEqual([13]);
+		expect(byPath.has("base.txt")).toBe(false);
 	});
 });
