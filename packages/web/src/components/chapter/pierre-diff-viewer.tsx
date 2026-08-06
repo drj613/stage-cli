@@ -14,6 +14,7 @@ import {
 	useCallback,
 	useDeferredValue,
 	useEffect,
+	useId,
 	useMemo,
 	useRef,
 	useState,
@@ -200,7 +201,12 @@ export function PierreDiffViewer({
 
 	// ---- Line-anchored comments ----
 	const comments = useCommentThreadsContext();
-	const { createThread } = comments;
+	const { createThread, pullRequests } = comments;
+	// A stack run has no default target — the server rejects an untargeted
+	// comment rather than filing it against a PR the author is not reading.
+	const isStack = pullRequests.length > 1;
+	const [targetPrNumber, setTargetPrNumber] = useState<number | null>(null);
+	const effectiveTarget = targetPrNumber ?? pullRequests[0]?.number ?? null;
 	const fileThreads = useMemo(
 		() => (filePath ? (comments.merged.byFile.get(filePath) ?? []) : []),
 		[comments.merged, filePath],
@@ -250,6 +256,7 @@ export function PierreDiffViewer({
 					startLine: draft.startLine,
 					endLine: draft.endLine,
 					body,
+					...(isStack && effectiveTarget !== null ? { prNumber: effectiveTarget } : {}),
 				});
 				closeDraft(draft);
 			} catch (err) {
@@ -257,7 +264,7 @@ export function PierreDiffViewer({
 				throw err; // keep the composer open with the body intact
 			}
 		},
-		[filePath, createThread, closeDraft],
+		[filePath, createThread, closeDraft, isStack, effectiveTarget],
 	);
 
 	const handleThreadMouseEnter = useCallback((anchor: DisplayThreadAnchor) => {
@@ -301,6 +308,15 @@ export function PierreDiffViewer({
 						// by its anchor to force a clean remount (re-reading its own draft text)
 						// instead of inheriting another composer's in-progress state.
 						<CommentForm
+							header={
+								isStack ? (
+									<StackTargetSelect
+										pullRequests={pullRequests}
+										value={effectiveTarget}
+										onChange={setTargetPrNumber}
+									/>
+								) : undefined
+							}
 							key={`draft-${draft.side}-${draft.endLine}`}
 							label="Comment"
 							placeholder="Leave a comment…"
@@ -316,7 +332,16 @@ export function PierreDiffViewer({
 				</div>
 			);
 		},
-		[drafts, handleCreateComment, closeDraft, handleThreadMouseEnter, handleThreadMouseLeave],
+		[
+			drafts,
+			handleCreateComment,
+			closeDraft,
+			handleThreadMouseEnter,
+			handleThreadMouseLeave,
+			isStack,
+			pullRequests,
+			effectiveTarget,
+		],
 	);
 
 	const renderGutterUtility = useCallback(
@@ -508,3 +533,38 @@ export function findContainingHunk(
  * without taking a direct dependency on `@pierre/diffs`.
  */
 export { getSingularPatch };
+
+/**
+ * Which pull request a comment on a stack run is for. Shown only for a stack —
+ * a single-PR run has exactly one answer and asking would be noise.
+ */
+function StackTargetSelect({
+	pullRequests,
+	value,
+	onChange,
+}: {
+	pullRequests: readonly { number: number }[];
+	value: number | null;
+	onChange: (prNumber: number) => void;
+}) {
+	const id = useId();
+	return (
+		<div className="mb-2 flex items-center gap-2">
+			<label className="text-muted-foreground text-xs" htmlFor={id}>
+				Comment on
+			</label>
+			<select
+				id={id}
+				className="rounded-md border bg-background px-2 py-1 text-xs"
+				value={value ?? ""}
+				onChange={(e) => onChange(Number(e.target.value))}
+			>
+				{pullRequests.map((pr) => (
+					<option key={pr.number} value={pr.number}>
+						#{pr.number}
+					</option>
+				))}
+			</select>
+		</div>
+	);
+}

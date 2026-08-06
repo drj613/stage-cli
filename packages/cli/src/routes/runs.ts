@@ -4,6 +4,7 @@ import { asc, count, desc, eq, inArray } from "drizzle-orm";
 import type { StageDb } from "../db/client.js";
 import { chapter, chapterRun, keyChange } from "../db/schema/index.js";
 import { parseRepoName } from "../git.js";
+import { parseGitHubRepo, toNameWithOwner } from "../github/repo.js";
 import { listRunMembers, listRunPrNumbers } from "../runs/run-members.js";
 import type { Route } from "../server.js";
 import { writeJson } from "./json.js";
@@ -40,9 +41,11 @@ function mapChapter(ch: ChapterRow, kcs: KeyChangeRow[]): Chapter {
 }
 
 function mapRun(db: StageDb, run: ChapterRunRow): ChapterRun {
+	const repo = parseGitHubRepo(run.originUrl);
 	return {
 		id: run.id,
 		repoName: parseRepoName(run.originUrl, run.repoRoot),
+		nameWithOwner: repo ? toNameWithOwner(repo) : null,
 		pullRequests: listRunMembers(db, run.id).map((m) => ({
 			number: m.prNumber,
 			headSha: m.headSha,

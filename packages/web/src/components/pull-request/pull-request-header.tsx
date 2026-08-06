@@ -17,6 +17,7 @@ import { PullRequestStatus } from "@/components/pull-request/pull-request-status
 import { Reviewers } from "@/components/pull-request/reviewers";
 import { DeploymentLinkList } from "@/components/shared/deployment-link-list";
 import { ShortcutTooltip } from "@/components/shared/shortcut-tooltip";
+import { StackBadge } from "@/components/shared/stack-badge";
 import { getUserDisplay, UserName } from "@/components/shared/user-name";
 import {
 	AlertDialog,
@@ -33,12 +34,14 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { chainsContaining } from "@/lib/chain-position";
 import { formatTimeAgo } from "@/lib/format";
 import { KEYBOARD_SHORTCUTS } from "@/lib/keyboard-shortcuts";
 import { usePullRequestContext } from "@/lib/pull-request-context";
 import { titleMutationOptions, useInvalidatePullRequest } from "@/lib/pull-request-mutations";
 import { usePullRequestChecks } from "@/lib/use-pull-request";
 import { usePullRequestStatusActions } from "@/lib/use-pull-request-status-actions";
+import { useStacks } from "@/lib/use-stacks";
 import { getPullRequestStatusInfo } from "@/lib/utils/pull-request-status";
 
 function HeaderDeploymentPopover({ deploymentLinks }: { deploymentLinks: DeploymentLink[] }) {
@@ -73,6 +76,11 @@ export interface PullRequestHeaderProps {
 
 export function PullRequestHeader({ pullRequest, mergeInfo }: PullRequestHeaderProps) {
 	const { runId, owner, repo } = usePullRequestContext();
+	// Chains for this repo, fetched after the header renders — a slow `gh` call
+	// must not hold up the PR itself, so the badge appears a beat later.
+	const nameWithOwner = `${owner}/${repo}`;
+	const graph = useStacks([nameWithOwner]).get(nameWithOwner);
+	const chains = graph ? chainsContaining(graph, pullRequest.number) : [];
 	const inMergeQueue = mergeInfo?.isInMergeQueue;
 	const mergeQueuePosition = mergeInfo?.entry?.position;
 	const status = getPullRequestStatusInfo(pullRequest, { inMergeQueue, mergeQueuePosition });
@@ -252,6 +260,13 @@ export function PullRequestHeader({ pullRequest, mergeInfo }: PullRequestHeaderP
 										#{pullRequest.number}
 									</span>
 								</h1>
+								{chains.length > 0 && (
+									<StackBadge
+										nameWithOwner={nameWithOwner}
+										prNumber={pullRequest.number}
+										chains={chains}
+									/>
+								)}
 								<Button
 									variant="ghost"
 									size="icon"

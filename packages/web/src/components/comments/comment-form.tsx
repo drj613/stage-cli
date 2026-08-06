@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CommentMarkdownEditor } from "./comment-markdown-editor";
 
@@ -6,6 +6,11 @@ interface CommentFormProps {
 	/** Label for the primary submit button (e.g. "Comment", "Reply", "Update"). */
 	label: string;
 	onSubmit: (body: string) => void | Promise<void>;
+	/**
+	 * Rendered above the editor. The stack composer puts its target-PR selector
+	 * here, so the choice sits with the text it applies to.
+	 */
+	header?: ReactNode;
 	onCancel: () => void;
 	placeholder?: string;
 	error?: string | null;
@@ -19,6 +24,7 @@ interface CommentFormProps {
 export function CommentForm({
 	label,
 	onSubmit,
+	header,
 	onCancel,
 	placeholder = "Leave a comment",
 	error,
@@ -70,6 +76,7 @@ export function CommentForm({
 
 	return (
 		<div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-150">
+			{header}
 			<CommentMarkdownEditor
 				value={body}
 				onChange={(value) => {

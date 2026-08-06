@@ -4,6 +4,7 @@ import { type CSSProperties, useCallback, useMemo, useRef, useState } from "reac
 import { DiffSettingsForm } from "@/components/diff/diff-settings-form";
 import { PullRequestHeader } from "@/components/pull-request/pull-request-header";
 import { PullRequestHeaderSkeleton } from "@/components/pull-request/pull-request-header-skeleton";
+import { StackHeader } from "@/components/pull-request/stack-header";
 import { SectionLabel } from "@/components/shared/section-label";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -117,6 +118,9 @@ function ErrorState({ error }: { error: unknown }) {
 export function PullRequestLayout({ runId }: { runId: string }) {
 	const { data, error } = useChapters(runId);
 	const { data: prData, isLoading: isPrLoading } = usePullRequest(runId);
+	// A stack run has no single PR: /pull-request 404s for it, so the header
+	// comes from the run's own membership instead.
+	const stackPullRequests = data?.run.pullRequests ?? [];
 	const pullRequest = prData?.pullRequest ?? null;
 	const isPrOpen =
 		pullRequest !== null &&
@@ -242,6 +246,8 @@ export function PullRequestLayout({ runId }: { runId: string }) {
 								mergeInfo={mergeStatusData?.mergeStatus ?? undefined}
 							/>
 						</PullRequestProvider>
+					) : stackPullRequests.length > 1 && data?.run.nameWithOwner ? (
+						<StackHeader nameWithOwner={data.run.nameWithOwner} pullRequests={stackPullRequests} />
 					) : (
 						<header className="space-y-1">
 							<SectionLabel>Run</SectionLabel>
