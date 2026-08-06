@@ -9,15 +9,30 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from "./app/__root";
+import { Route as SettingsRouteImport } from "./app/settings";
 import { Route as IndexRouteImport } from "./app/index";
+import { Route as BrowseIndexRouteImport } from "./app/browse.index";
 import { Route as RunsRunIdRouteImport } from "./app/runs.$runId";
 import { Route as RunsRunIdIndexRouteImport } from "./app/runs.$runId.index";
+import { Route as BrowseOwnerIndexRouteImport } from "./app/browse.$owner.index";
 import { Route as RunsRunIdFilesRouteImport } from "./app/runs.$runId.files";
+import { Route as BrowseOwnerRepoRouteImport } from "./app/browse.$owner.$repo";
 import { Route as RunsRunIdChaptersChapterNumberRouteImport } from "./app/runs.$runId.chapters.$chapterNumber";
+import { Route as PrOwnerRepoNumberRouteImport } from "./app/pr.$owner.$repo.$number";
 
+const SettingsRoute = SettingsRouteImport.update({
+  id: "/settings",
+  path: "/settings",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const IndexRoute = IndexRouteImport.update({
   id: "/",
   path: "/",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const BrowseIndexRoute = BrowseIndexRouteImport.update({
+  id: "/browse/",
+  path: "/browse/",
   getParentRoute: () => rootRouteImport,
 } as any);
 const RunsRunIdRoute = RunsRunIdRouteImport.update({
@@ -30,10 +45,20 @@ const RunsRunIdIndexRoute = RunsRunIdIndexRouteImport.update({
   path: "/",
   getParentRoute: () => RunsRunIdRoute,
 } as any);
+const BrowseOwnerIndexRoute = BrowseOwnerIndexRouteImport.update({
+  id: "/browse/$owner/",
+  path: "/browse/$owner/",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const RunsRunIdFilesRoute = RunsRunIdFilesRouteImport.update({
   id: "/files",
   path: "/files",
   getParentRoute: () => RunsRunIdRoute,
+} as any);
+const BrowseOwnerRepoRoute = BrowseOwnerRepoRouteImport.update({
+  id: "/browse/$owner/$repo",
+  path: "/browse/$owner/$repo",
+  getParentRoute: () => rootRouteImport,
 } as any);
 const RunsRunIdChaptersChapterNumberRoute =
   RunsRunIdChaptersChapterNumberRouteImport.update({
@@ -41,63 +66,117 @@ const RunsRunIdChaptersChapterNumberRoute =
     path: "/chapters/$chapterNumber",
     getParentRoute: () => RunsRunIdRoute,
   } as any);
+const PrOwnerRepoNumberRoute = PrOwnerRepoNumberRouteImport.update({
+  id: "/pr/$owner/$repo/$number",
+  path: "/pr/$owner/$repo/$number",
+  getParentRoute: () => rootRouteImport,
+} as any);
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute;
+  "/settings": typeof SettingsRoute;
   "/runs/$runId": typeof RunsRunIdRouteWithChildren;
+  "/browse/": typeof BrowseIndexRoute;
+  "/browse/$owner/$repo": typeof BrowseOwnerRepoRoute;
   "/runs/$runId/files": typeof RunsRunIdFilesRoute;
+  "/browse/$owner/": typeof BrowseOwnerIndexRoute;
   "/runs/$runId/": typeof RunsRunIdIndexRoute;
+  "/pr/$owner/$repo/$number": typeof PrOwnerRepoNumberRoute;
   "/runs/$runId/chapters/$chapterNumber": typeof RunsRunIdChaptersChapterNumberRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute;
+  "/settings": typeof SettingsRoute;
+  "/browse": typeof BrowseIndexRoute;
+  "/browse/$owner/$repo": typeof BrowseOwnerRepoRoute;
   "/runs/$runId/files": typeof RunsRunIdFilesRoute;
+  "/browse/$owner": typeof BrowseOwnerIndexRoute;
   "/runs/$runId": typeof RunsRunIdIndexRoute;
+  "/pr/$owner/$repo/$number": typeof PrOwnerRepoNumberRoute;
   "/runs/$runId/chapters/$chapterNumber": typeof RunsRunIdChaptersChapterNumberRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof IndexRoute;
+  "/settings": typeof SettingsRoute;
   "/runs/$runId": typeof RunsRunIdRouteWithChildren;
+  "/browse/": typeof BrowseIndexRoute;
+  "/browse/$owner/$repo": typeof BrowseOwnerRepoRoute;
   "/runs/$runId/files": typeof RunsRunIdFilesRoute;
+  "/browse/$owner/": typeof BrowseOwnerIndexRoute;
   "/runs/$runId/": typeof RunsRunIdIndexRoute;
+  "/pr/$owner/$repo/$number": typeof PrOwnerRepoNumberRoute;
   "/runs/$runId/chapters/$chapterNumber": typeof RunsRunIdChaptersChapterNumberRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
   fullPaths:
     | "/"
+    | "/settings"
     | "/runs/$runId"
+    | "/browse/"
+    | "/browse/$owner/$repo"
     | "/runs/$runId/files"
+    | "/browse/$owner/"
     | "/runs/$runId/"
+    | "/pr/$owner/$repo/$number"
     | "/runs/$runId/chapters/$chapterNumber";
   fileRoutesByTo: FileRoutesByTo;
   to:
     | "/"
+    | "/settings"
+    | "/browse"
+    | "/browse/$owner/$repo"
     | "/runs/$runId/files"
+    | "/browse/$owner"
     | "/runs/$runId"
+    | "/pr/$owner/$repo/$number"
     | "/runs/$runId/chapters/$chapterNumber";
   id:
     | "__root__"
     | "/"
+    | "/settings"
     | "/runs/$runId"
+    | "/browse/"
+    | "/browse/$owner/$repo"
     | "/runs/$runId/files"
+    | "/browse/$owner/"
     | "/runs/$runId/"
+    | "/pr/$owner/$repo/$number"
     | "/runs/$runId/chapters/$chapterNumber";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
+  SettingsRoute: typeof SettingsRoute;
   RunsRunIdRoute: typeof RunsRunIdRouteWithChildren;
+  BrowseIndexRoute: typeof BrowseIndexRoute;
+  BrowseOwnerRepoRoute: typeof BrowseOwnerRepoRoute;
+  BrowseOwnerIndexRoute: typeof BrowseOwnerIndexRoute;
+  PrOwnerRepoNumberRoute: typeof PrOwnerRepoNumberRoute;
 }
 
 declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
+    "/settings": {
+      id: "/settings";
+      path: "/settings";
+      fullPath: "/settings";
+      preLoaderRoute: typeof SettingsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/": {
       id: "/";
       path: "/";
       fullPath: "/";
       preLoaderRoute: typeof IndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/browse/": {
+      id: "/browse/";
+      path: "/browse";
+      fullPath: "/browse/";
+      preLoaderRoute: typeof BrowseIndexRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/runs/$runId": {
@@ -114,6 +193,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof RunsRunIdIndexRouteImport;
       parentRoute: typeof RunsRunIdRoute;
     };
+    "/browse/$owner/": {
+      id: "/browse/$owner/";
+      path: "/browse/$owner";
+      fullPath: "/browse/$owner/";
+      preLoaderRoute: typeof BrowseOwnerIndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/runs/$runId/files": {
       id: "/runs/$runId/files";
       path: "/files";
@@ -121,12 +207,26 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof RunsRunIdFilesRouteImport;
       parentRoute: typeof RunsRunIdRoute;
     };
+    "/browse/$owner/$repo": {
+      id: "/browse/$owner/$repo";
+      path: "/browse/$owner/$repo";
+      fullPath: "/browse/$owner/$repo";
+      preLoaderRoute: typeof BrowseOwnerRepoRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/runs/$runId/chapters/$chapterNumber": {
       id: "/runs/$runId/chapters/$chapterNumber";
       path: "/chapters/$chapterNumber";
       fullPath: "/runs/$runId/chapters/$chapterNumber";
       preLoaderRoute: typeof RunsRunIdChaptersChapterNumberRouteImport;
       parentRoute: typeof RunsRunIdRoute;
+    };
+    "/pr/$owner/$repo/$number": {
+      id: "/pr/$owner/$repo/$number";
+      path: "/pr/$owner/$repo/$number";
+      fullPath: "/pr/$owner/$repo/$number";
+      preLoaderRoute: typeof PrOwnerRepoNumberRouteImport;
+      parentRoute: typeof rootRouteImport;
     };
   }
 }
@@ -149,7 +249,12 @@ const RunsRunIdRouteWithChildren = RunsRunIdRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SettingsRoute: SettingsRoute,
   RunsRunIdRoute: RunsRunIdRouteWithChildren,
+  BrowseIndexRoute: BrowseIndexRoute,
+  BrowseOwnerRepoRoute: BrowseOwnerRepoRoute,
+  BrowseOwnerIndexRoute: BrowseOwnerIndexRoute,
+  PrOwnerRepoNumberRoute: PrOwnerRepoNumberRoute,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

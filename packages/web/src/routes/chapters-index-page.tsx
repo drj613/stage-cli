@@ -2,10 +2,11 @@ import type { Chapter } from "@stagereview/types/chapters";
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, ChevronRight, Circle, CircleCheck, FileCode } from "lucide-react";
 import { useCallback, useMemo } from "react";
+import { ListEmpty } from "@/components/dashboard/list-notice";
 import { OverviewColumnHeader } from "@/components/pull-request/overview-column-header";
-import { SectionLabel } from "@/components/pull-request/section-label";
 import { CopyMarkdownButton } from "@/components/shared/copy-markdown-button";
 import { LineCounts } from "@/components/shared/line-counts";
+import { SectionLabel } from "@/components/shared/section-label";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -165,7 +166,9 @@ export function ChaptersIndexPage({ chapters, runId, isLoading }: ChaptersIndexP
 			</OverviewColumnHeader>
 			{isLoading || !chapters ? (
 				<ChapterLoadingSkeleton />
-			) : chapters.length === 0 ? null : (
+			) : chapters.length === 0 ? (
+				<ListEmpty>No chapters in this run.</ListEmpty>
+			) : (
 				<ChaptersList chapters={chapters} runId={runId} />
 			)}
 		</div>

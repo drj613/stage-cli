@@ -22,14 +22,15 @@ export interface RepoContext {
 	originUrl: string | null;
 }
 
-export function readRepoContext(): RepoContext {
-	const root = readRepoRoot();
+export function readRepoContext(cwd: string): RepoContext {
+	const root = readRepoRoot(cwd);
 	return { root, originUrl: readOriginUrl(root) };
 }
 
-export function readRepoRoot(): string {
+/** Discover the worktree root containing `cwd`. */
+export function readRepoRoot(cwd: string): string {
 	try {
-		return execFileSync("git", ["rev-parse", "--show-toplevel"], {
+		return execFileSync("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
 			encoding: "utf8",
 			stdio: ["ignore", "pipe", "ignore"],
 		}).trim();
@@ -99,7 +100,7 @@ export function parseRepoName(originUrl: string | null, repoRoot: string): strin
 	return path.basename(repoRoot);
 }
 
-export function detectBaseRef(): string {
+export function detectBaseRef(cwd: string): string {
 	const candidates: string[][] = [
 		["rev-parse", "--abbrev-ref", "origin/HEAD"],
 		["rev-parse", "--verify", "main"],
@@ -110,7 +111,7 @@ export function detectBaseRef(): string {
 
 	for (const args of candidates) {
 		try {
-			const out = execFileSync("git", args, {
+			const out = execFileSync("git", ["-C", cwd, ...args], {
 				encoding: "utf8",
 				stdio: ["ignore", "pipe", "ignore"],
 			}).trim();
@@ -125,24 +126,24 @@ export function detectBaseRef(): string {
 	);
 }
 
-export function resolveMergeBase(base: string): string {
-	return execFileSync("git", ["merge-base", base, "HEAD"], {
+export function resolveMergeBase(cwd: string, base: string): string {
+	return execFileSync("git", ["-C", cwd, "merge-base", base, "HEAD"], {
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "ignore"],
 	}).trim();
 }
 
-export function resolveHead(): string {
-	return execFileSync("git", ["rev-parse", "HEAD"], {
+export function resolveHead(cwd: string): string {
+	return execFileSync("git", ["-C", cwd, "rev-parse", "HEAD"], {
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "ignore"],
 	}).trim();
 }
 
-export function getRawDiff(args: string[]): string {
+export function getRawDiff(cwd: string, args: string[]): string {
 	return execFileSync(
 		"git",
-		["diff", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", ...args],
+		["-C", cwd, "diff", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", ...args],
 		{
 			encoding: "utf8",
 			stdio: ["ignore", "pipe", "ignore"],
@@ -151,8 +152,8 @@ export function getRawDiff(args: string[]): string {
 	);
 }
 
-export function getUntrackedFiles(): string[] {
-	const out = execFileSync("git", ["ls-files", "--others", "--exclude-standard"], {
+export function getUntrackedFiles(cwd: string): string[] {
+	const out = execFileSync("git", ["-C", cwd, "ls-files", "--others", "--exclude-standard"], {
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "ignore"],
 	}).trim();
@@ -165,13 +166,15 @@ export function hasStringStdout(err: unknown): err is { stdout: string } {
 	);
 }
 
-export function getUntrackedDiff(files: string[]): string {
+export function getUntrackedDiff(cwd: string, files: string[]): string {
 	const patches: string[] = [];
 	for (const file of files) {
 		try {
 			execFileSync(
 				"git",
 				[
+					"-C",
+					cwd,
 					"diff",
 					"--no-index",
 					"--no-color",
@@ -196,15 +199,15 @@ export function getUntrackedDiff(files: string[]): string {
 	return patches.join("\n");
 }
 
-export function getCommitMessages(mergeBase: string, head: string): string {
-	return execFileSync("git", ["log", "--oneline", `${mergeBase}..${head}`], {
+export function getCommitMessages(cwd: string, mergeBase: string, head: string): string {
+	return execFileSync("git", ["-C", cwd, "log", "--oneline", `${mergeBase}..${head}`], {
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "ignore"],
 	}).trim();
 }
 
-export function hasUncommittedChanges(): boolean {
-	const out = execFileSync("git", ["status", "--porcelain"], {
+export function hasUncommittedChanges(cwd: string): boolean {
+	const out = execFileSync("git", ["-C", cwd, "status", "--porcelain"], {
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "ignore"],
 	}).trim();
@@ -218,6 +221,11 @@ export interface ResolvedScope {
 }
 
 export interface ResolveScopeOptions {
+	/**
+	 * Directory every git command runs in. Callers that already know the repo
+	 * (the generation daemon) pass its root; the CLI passes `process.cwd()`.
+	 */
+	cwd: string;
 	base?: string;
 	compare?: string;
 	refs?: string[];
@@ -249,12 +257,12 @@ function includesUntrackedFiles(ref: WorkingTreeRef): boolean {
 	return ref === WORKING_TREE_REF.WORK;
 }
 
-function buildWorkingTreeDiff(ref: WorkingTreeRef, mergeBaseSha: string): string {
-	let rawDiff = getRawDiff(workingTreeDiffArgs(ref, mergeBaseSha));
+function buildWorkingTreeDiff(cwd: string, ref: WorkingTreeRef, mergeBaseSha: string): string {
+	let rawDiff = getRawDiff(cwd, workingTreeDiffArgs(ref, mergeBaseSha));
 	if (includesUntrackedFiles(ref)) {
-		const untrackedFiles = getUntrackedFiles();
+		const untrackedFiles = getUntrackedFiles(cwd);
 		if (untrackedFiles.length > 0) {
-			const untrackedDiff = getUntrackedDiff(untrackedFiles);
+			const untrackedDiff = getUntrackedDiff(cwd, untrackedFiles);
 			if (untrackedDiff) {
 				rawDiff = rawDiff ? `${rawDiff}\n${untrackedDiff}` : untrackedDiff;
 			}
@@ -263,24 +271,24 @@ function buildWorkingTreeDiff(ref: WorkingTreeRef, mergeBaseSha: string): string
 	return rawDiff;
 }
 
-function resolveRefToSha(ref: string): string {
-	return execFileSync("git", ["rev-parse", "--verify", ref], {
+function resolveRefToSha(cwd: string, ref: string): string {
+	return execFileSync("git", ["-C", cwd, "rev-parse", "--verify", ref], {
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "ignore"],
 	}).trim();
 }
 
-function canResolveRef(ref: string): boolean {
+function canResolveRef(cwd: string, ref: string): boolean {
 	try {
-		resolveRefToSha(ref);
+		resolveRefToSha(cwd, ref);
 		return true;
 	} catch {
 		return false;
 	}
 }
 
-function resolveMergeBaseBetween(left: string, right: string): string {
-	return execFileSync("git", ["merge-base", left, right], {
+function resolveMergeBaseBetween(cwd: string, left: string, right: string): string {
+	return execFileSync("git", ["-C", cwd, "merge-base", left, right], {
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "ignore"],
 	}).trim();
@@ -306,12 +314,16 @@ function parseRefRange(ref: string): RefRange | null {
 	return null;
 }
 
-export function resolveCommittedComparison(left: string, right: string): ResolvedScope {
+export function resolveCommittedComparison(
+	cwd: string,
+	left: string,
+	right: string,
+): ResolvedScope {
 	const effectiveLeft = left || "HEAD";
 	const effectiveRight = right || "HEAD";
 
-	const mergeBaseSha = resolveMergeBaseBetween(effectiveLeft, effectiveRight);
-	const headSha = resolveRefToSha(effectiveRight);
+	const mergeBaseSha = resolveMergeBaseBetween(cwd, effectiveLeft, effectiveRight);
+	const headSha = resolveRefToSha(cwd, effectiveRight);
 
 	return {
 		scope: {
@@ -321,7 +333,7 @@ export function resolveCommittedComparison(left: string, right: string): Resolve
 			mergeBaseSha,
 		},
 		mergeBaseSha,
-		rawDiff: getRawDiff([`${mergeBaseSha}..${headSha}`]),
+		rawDiff: getRawDiff(cwd, [`${mergeBaseSha}..${headSha}`]),
 	};
 }
 
@@ -339,11 +351,16 @@ function parseWorkingTreeRefArg(ref: string): WorkingTreeRef | null {
 	}
 }
 
-function resolveSingleRefScope(base: string, workingTreeRef?: WorkingTreeRef): ResolvedScope {
-	const mergeBaseSha = resolveMergeBase(base);
-	const headSha = resolveHead();
+function resolveSingleRefScope(
+	cwd: string,
+	base: string,
+	workingTreeRef?: WorkingTreeRef,
+): ResolvedScope {
+	const mergeBaseSha = resolveMergeBase(cwd, base);
+	const headSha = resolveHead(cwd);
 
-	const effectiveRef = workingTreeRef ?? (hasUncommittedChanges() ? WORKING_TREE_REF.WORK : null);
+	const effectiveRef =
+		workingTreeRef ?? (hasUncommittedChanges(cwd) ? WORKING_TREE_REF.WORK : null);
 
 	if (effectiveRef) {
 		return {
@@ -355,7 +372,7 @@ function resolveSingleRefScope(base: string, workingTreeRef?: WorkingTreeRef): R
 				mergeBaseSha,
 			},
 			mergeBaseSha,
-			rawDiff: buildWorkingTreeDiff(effectiveRef, mergeBaseSha),
+			rawDiff: buildWorkingTreeDiff(cwd, effectiveRef, mergeBaseSha),
 		};
 	}
 
@@ -367,11 +384,12 @@ function resolveSingleRefScope(base: string, workingTreeRef?: WorkingTreeRef): R
 			mergeBaseSha,
 		},
 		mergeBaseSha,
-		rawDiff: getRawDiff([`${mergeBaseSha}..${headSha}`]),
+		rawDiff: getRawDiff(cwd, [`${mergeBaseSha}..${headSha}`]),
 	};
 }
 
-export function resolveScope(options: ResolveScopeOptions = {}): ResolvedScope {
+export function resolveScope(options: ResolveScopeOptions): ResolvedScope {
+	const { cwd } = options;
 	const refs = options.refs === undefined ? [] : options.refs;
 	if (refs.length > 2) {
 		throw new Error("Expected at most two git ref arguments.");
@@ -390,7 +408,7 @@ export function resolveScope(options: ResolveScopeOptions = {}): ResolvedScope {
 		if (options.base === undefined) {
 			throw new Error("--compare requires --base.");
 		}
-		return resolveCommittedComparison(options.base, options.compare);
+		return resolveCommittedComparison(cwd, options.base, options.compare);
 	}
 
 	if (refs.length === 2) {
@@ -399,7 +417,7 @@ export function resolveScope(options: ResolveScopeOptions = {}): ResolvedScope {
 		if (left === undefined || right === undefined) {
 			throw new Error("Expected both base and compare refs.");
 		}
-		return resolveCommittedComparison(left, right);
+		return resolveCommittedComparison(cwd, left, right);
 	}
 
 	if (refs.length === 1) {
@@ -409,18 +427,18 @@ export function resolveScope(options: ResolveScopeOptions = {}): ResolvedScope {
 		}
 
 		const range = parseRefRange(ref);
-		if (range) return resolveCommittedComparison(range.left, range.right);
+		if (range) return resolveCommittedComparison(cwd, range.left, range.right);
 
-		if (!canResolveRef(ref)) {
+		if (!canResolveRef(cwd, ref)) {
 			const workingTreeRef = parseWorkingTreeRefArg(ref);
 			if (workingTreeRef) {
-				return resolveSingleRefScope(detectBaseRef(), workingTreeRef);
+				return resolveSingleRefScope(cwd, detectBaseRef(cwd), workingTreeRef);
 			}
 		}
 
-		return resolveSingleRefScope(ref);
+		return resolveSingleRefScope(cwd, ref);
 	}
 
-	const base = options.base === undefined ? detectBaseRef() : options.base;
-	return resolveSingleRefScope(base, options.workingTreeRef);
+	const base = options.base === undefined ? detectBaseRef(cwd) : options.base;
+	return resolveSingleRefScope(cwd, base, options.workingTreeRef);
 }

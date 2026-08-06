@@ -29,9 +29,9 @@ export interface ResolvedDiffScope extends ResolvedScope {
  */
 export async function resolveDiffScope(options: DiffScopeOptions): Promise<ResolvedDiffScope> {
 	if (options.pr !== undefined) {
-		const { root, originUrl } = readRepoContext();
+		const { root, originUrl } = readRepoContext(options.cwd);
 		const { number, baseSha, headSha } = await resolvePullRequestRefs(root, originUrl, options.pr);
-		return { ...resolveCommittedComparison(baseSha, headSha), prNumber: number };
+		return { ...resolveCommittedComparison(options.cwd, baseSha, headSha), prNumber: number };
 	}
 	return { ...resolveScope(options), prNumber: null };
 }
@@ -42,6 +42,6 @@ export async function resolveDiffScope(options: DiffScopeOptions): Promise<Resol
  * (a complete chapters file carries its own scope) but the run still needs to
  * record which PR it targets so the UI resolves the right one.
  */
-export function pullRequestNumberFromRef(pr: string): number {
-	return parsePullRequestRef(readRepoContext().originUrl, pr);
+export function pullRequestNumberFromRef(cwd: string, pr: string): number {
+	return parsePullRequestRef(readRepoContext(cwd).originUrl, pr);
 }

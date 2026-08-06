@@ -5,13 +5,14 @@ import type {
 } from "@stagereview/types/pull-request";
 import { CHECK_CONCLUSION, CHECK_ITEM_STATUS } from "@stagereview/types/pull-request";
 import { Check, ChevronDown, Loader2, MinusCircle, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { AvatarStack } from "@/components/shared/avatar-stack";
 import { CiStatusIcon } from "@/components/shared/ci-status-icon";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { formatElapsedTime } from "@/lib/format";
+import { formatDurationSeconds, formatElapsedTime } from "@/lib/format";
+import { useNow } from "@/lib/use-elapsed";
 import { cn } from "@/lib/utils";
 
 // ─── Visual state derivation from raw Octokit status/conclusion ─────────────────
@@ -63,14 +64,8 @@ function CheckVisualIcon({ visual, cls }: { visual: CheckVisual; cls: string }) 
 const VISIBLE_COUNT = 5;
 
 function LiveElapsedTime({ startedAt }: { startedAt: string }) {
-	const [now, setNow] = useState(() => new Date().toISOString());
-
-	useEffect(() => {
-		const id = setInterval(() => setNow(new Date().toISOString()), 1000);
-		return () => clearInterval(id);
-	}, []);
-
-	const duration = formatElapsedTime(startedAt, now);
+	const now = useNow();
+	const duration = formatDurationSeconds((now - Date.parse(startedAt)) / 1000);
 	return duration ? (
 		<span className="shrink-0 text-xs text-muted-foreground">{duration}</span>
 	) : null;

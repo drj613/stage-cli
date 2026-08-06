@@ -22,3 +22,12 @@ export function parseGitHubRepo(originUrl: string | null): GitHubRepo | null {
 export function isGitHubRemote(originUrl: string | null): boolean {
 	return parseGitHubRepo(originUrl) !== null;
 }
+
+/**
+ * Inverse of `parseGitHubRepo`: the `nameWithOwner` slug GitHub uses to
+ * identify a repo (as returned by `gh`'s `repository.nameWithOwner` field).
+ * Lowercased since GitHub owner/repo names are case-insensitive.
+ */
+export function toNameWithOwner(repo: GitHubRepo): string {
+	return `${repo.owner}/${repo.repo}`.toLowerCase();
+}

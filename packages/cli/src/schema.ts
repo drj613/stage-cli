@@ -1,15 +1,12 @@
 import { hunkReferenceSchema, lineRefSchema } from "@stagereview/types/chapters";
 import { PrologueSchema } from "@stagereview/types/prologue";
+import { SCOPE_KIND } from "@stagereview/types/scope";
 import { z } from "zod";
 
 export type { DiffSide, HunkReference, LineRef } from "@stagereview/types/chapters";
 export { DIFF_SIDE, hunkReferenceSchema, lineRefSchema } from "@stagereview/types/chapters";
-
-export const SCOPE_KIND = {
-	COMMITTED: "committed",
-	WORKING_TREE: "workingTree",
-} as const;
-export type ScopeKind = (typeof SCOPE_KIND)[keyof typeof SCOPE_KIND];
+export type { ScopeKind } from "@stagereview/types/scope";
+export { SCOPE_KIND } from "@stagereview/types/scope";
 
 export const WORKING_TREE_REF = {
 	WORK: "work",

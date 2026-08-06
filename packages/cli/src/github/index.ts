@@ -11,10 +11,13 @@ export {
 } from "./mutations.js";
 export { getChecks, getMergeStatus, getPullRequest, getReviews } from "./pull-request.js";
 export {
+	type PullRequestLocation,
 	type PullRequestRefs,
 	parsePullRequestNumber,
 	parsePullRequestRef,
+	parsePullRequestUrl,
 	resolvePullRequestRefs,
+	toPullRequestUrl,
 } from "./pull-request-ref.js";
-export { type GitHubRepo, isGitHubRemote, parseGitHubRepo } from "./repo.js";
+export { type GitHubRepo, isGitHubRemote, parseGitHubRepo, toNameWithOwner } from "./repo.js";
 export { type GitHubViewer, getGitHubViewer } from "./viewer.js";

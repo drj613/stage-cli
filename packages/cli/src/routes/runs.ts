@@ -1,10 +1,13 @@
 import type { Chapter, ChapterRun, KeyChange } from "@stagereview/types/chapters";
-import { asc, eq, inArray } from "drizzle-orm";
+import type { RunListResponse, RunSummary } from "@stagereview/types/run-summary";
+import { asc, count, desc, eq, inArray } from "drizzle-orm";
 import type { StageDb } from "../db/client.js";
 import { chapter, chapterRun, keyChange } from "../db/schema/index.js";
 import { parseRepoName } from "../git.js";
 import type { Route } from "../server.js";
 import { writeJson } from "./json.js";
+
+const RUN_LIST_LIMIT = 200;
 
 type ChapterRow = typeof chapter.$inferSelect;
 type ChapterRunRow = typeof chapterRun.$inferSelect;
@@ -41,6 +44,38 @@ function mapRun(run: ChapterRunRow): ChapterRun {
 
 export function runRoutes(db: StageDb): Route[] {
 	return [
+		{
+			method: "GET",
+			pattern: "/api/runs",
+			handler: (_req, res) => {
+				const runs = db
+					.select()
+					.from(chapterRun)
+					.orderBy(desc(chapterRun.generatedAt))
+					.limit(RUN_LIST_LIMIT)
+					.all();
+				const counts = db
+					.select({ runId: chapter.runId, chapterCount: count() })
+					.from(chapter)
+					.groupBy(chapter.runId)
+					.all();
+				const countByRun = new Map(counts.map((c) => [c.runId, c.chapterCount]));
+
+				const body: RunListResponse = {
+					runs: runs.map(
+						(run): RunSummary => ({
+							id: run.id,
+							repoName: parseRepoName(run.originUrl, run.repoRoot),
+							prNumber: run.prNumber,
+							scopeKind: run.scopeKind,
+							generatedAt: run.generatedAt.toISOString(),
+							chapterCount: countByRun.get(run.id) ?? 0,
+						}),
+					),
+				};
+				writeJson(res, 200, body);
+			},
+		},
 		{
 			method: "GET",
 			pattern: "/api/runs/:runId/chapters",

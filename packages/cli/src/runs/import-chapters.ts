@@ -18,7 +18,7 @@ export function importChaptersFile(jsonPath: string, db: StageDb = getDb()): Imp
 	const raw = readFileSync(absolute, "utf8");
 	const parsed = JSON.parse(raw) as unknown;
 	const file = ChaptersFileSchema.parse(parsed);
-	return insertChaptersFile(db, file, readRepoContext());
+	return insertChaptersFile(db, file, readRepoContext(process.cwd()));
 }
 
 export function insertChaptersFile(

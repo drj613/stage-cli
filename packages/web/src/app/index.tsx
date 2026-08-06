@@ -1,23 +1,75 @@
+import { PR_FILTER } from "@stagereview/types/pull-requests";
 import { createFileRoute } from "@tanstack/react-router";
+import { OnboardingCard } from "@/components/dashboard/onboarding-card";
+import { PullRequestList } from "@/components/dashboard/pull-request-list";
+import { RunList } from "@/components/dashboard/run-list";
 import { Topbar } from "@/components/layout/topbar";
+import { SectionLabel } from "@/components/shared/section-label";
+import { dedupeAgainst } from "@/lib/dedupe-pull-requests";
+import { useActiveJobs } from "@/lib/use-active-jobs";
+import { useCloneRoots } from "@/lib/use-clone-roots";
+import { usePullRequests } from "@/lib/use-pull-requests";
 
 export const Route = createFileRoute("/")({
-	component: NoRunSelected,
+	component: Dashboard,
 });
 
-function NoRunSelected() {
+function Dashboard() {
+	const review = usePullRequests(PR_FILTER.REVIEW_REQUESTED);
+	const assigned = usePullRequests(PR_FILTER.ASSIGNEE);
+	const authored = usePullRequests(PR_FILTER.AUTHOR);
+	const cloneRoots = useCloneRoots();
+	const activeJobs = useActiveJobs();
+
+	const reviewRows = review.data?.available === true ? review.data.pullRequests : null;
+	const assignedRows = assigned.data?.available === true ? assigned.data.pullRequests : null;
+	const authoredRows = authored.data?.available === true ? authored.data.pullRequests : null;
+
+	// Onboarding is noise for someone whose dashboard already works through the
+	// RunIndex fallback — only nag when there are zero roots *and* a listed PR
+	// is actually blocked on one.
+	const hasUnclonedRow = [reviewRows, assignedRows, authoredRows].some((rows) =>
+		rows?.some((row) => !row.cloned),
+	);
+	const showOnboarding = cloneRoots.data?.roots.length === 0 && hasUnclonedRow;
+
 	return (
 		<>
 			<Topbar />
-			<div className="flex flex-1 items-center justify-center p-6">
-				<div className="max-w-md text-center">
-					<h1 className="font-semibold text-lg">No run selected</h1>
-					<p className="mt-2 text-muted-foreground text-sm">
-						The URL is missing a <code>/runs/&lt;runId&gt;</code> path. Open the app via{" "}
-						<code>stagereview show &lt;path&gt;</code>.
-					</p>
-				</div>
-			</div>
+			<main className="mx-auto w-full max-w-4xl flex-1 space-y-10 p-6 lg:p-8">
+				{showOnboarding && <OnboardingCard />}
+				<section className="space-y-3">
+					<SectionLabel>Waiting on your review</SectionLabel>
+					<PullRequestList
+						query={review}
+						rows={reviewRows ?? []}
+						emptyText="Nothing is waiting on your review."
+						activeJobs={activeJobs}
+					/>
+				</section>
+				<section className="space-y-3">
+					<SectionLabel>Assigned to you</SectionLabel>
+					<PullRequestList
+						query={assigned}
+						rows={dedupeAgainst(assignedRows ?? [], [reviewRows])}
+						emptyText="Nothing is assigned to you."
+						activeJobs={activeJobs}
+					/>
+				</section>
+				<section className="space-y-3">
+					<SectionLabel>Your open PRs</SectionLabel>
+					<PullRequestList
+						query={authored}
+						rows={dedupeAgainst(authoredRows ?? [], [reviewRows, assignedRows])}
+						emptyText="You have no open pull requests."
+						activeJobs={activeJobs}
+					/>
+				</section>
+				<section className="space-y-3">
+					<SectionLabel>Recent runs</SectionLabel>
+					<RunList />
+				</section>
+			</main>
 		</>
 	);
 }

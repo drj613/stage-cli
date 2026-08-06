@@ -44,6 +44,11 @@ packages/
     src/                    # CLI + local HTTP server (Node, ESM)
       index.ts              # CLI entry (Commander)
       show.ts               # `stagereview show <path>` implementation
+      start.ts              # `stagereview start` dashboard daemon
+      import.ts             # `stagereview import` headless run insertion
+      clones/               # Clone-root store, filesystem scanner, and repo-root resolver
+      generation/           # Sequential headless `claude -p` job manager
+      github/               # `gh` CLI wrappers (PR search, browse, review data)
       server.ts             # Plain Node http server with regex-compiled routes
       routes/               # API route handlers (one file per resource)
       runs/                 # Chapter run import + processing
@@ -82,7 +87,7 @@ Plain Node `http` server bound to `127.0.0.1`. Route patterns use `:name` placeh
 
 - **Client:** `getDb()` in `db/client.ts` is a singleton wrapped around `better-sqlite3`. It enables WAL + foreign keys and auto-runs migrations from `packages/cli/drizzle/`.
 - **Schemas:** `db/schema/*.ts`, re-exported from `db/schema/index.ts`. Pass `* as schema` into `drizzle()` so relational queries work.
-- **Path:** `db/path.ts` decides where the SQLite file lives (per-OS app data dir).
+- **Path:** `db/path.ts` — one global DB at `~/.stage/db.sqlite` shared by every repo (the dashboard lists runs across repos).
 - Prefer Drizzle's Relational Queries API over the SQL-like query builder unless you need aggregations, custom column selections, or complex joins.
 
 ### Shared Types (`packages/types/`)

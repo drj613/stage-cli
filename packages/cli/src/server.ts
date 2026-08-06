@@ -218,6 +218,20 @@ async function sendFile(filePath: string, res: http.ServerResponse): Promise<boo
 	return true;
 }
 
+/** Resolves once the process receives SIGINT or SIGTERM. */
+export function waitForShutdownSignal(): Promise<void> {
+	return new Promise<void>((resolve) => {
+		const cleanup = () => {
+			process.removeListener("SIGINT", cleanup);
+			process.removeListener("SIGTERM", cleanup);
+			resolve();
+		};
+
+		process.once("SIGINT", cleanup);
+		process.once("SIGTERM", cleanup);
+	});
+}
+
 async function sendIndexFallback(webDist: string, res: http.ServerResponse): Promise<void> {
 	const indexPath = path.join(webDist, "index.html");
 	let stat: Awaited<ReturnType<typeof fsp.stat>>;

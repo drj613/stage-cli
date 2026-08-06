@@ -23,7 +23,7 @@ const FALLBACK_VIEWER: Viewer = { name: "You", avatarUrl: null };
 async function resolveViewer(): Promise<Viewer> {
 	let repoRoot: string;
 	try {
-		repoRoot = readRepoRoot();
+		repoRoot = readRepoRoot(process.cwd());
 	} catch {
 		return FALLBACK_VIEWER;
 	}

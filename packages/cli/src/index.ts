@@ -1,11 +1,17 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
+import path from "node:path";
+import { GENERATION_MODEL } from "@stagereview/types/generation";
 import { Command, Option } from "commander";
 import { z } from "zod";
+import { addCloneRoot, listCloneRoots, removeCloneRoot } from "./clones/clone-root-store.js";
+import { closeDb, getDb } from "./db/client.js";
+import { runImport } from "./import.js";
 import { runPrep } from "./prep.js";
 import { WORKING_TREE_REF } from "./schema.js";
 import type { DiffScopeOptions } from "./scope.js";
 import { show } from "./show.js";
+import { start } from "./start.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
@@ -22,11 +28,31 @@ const refOption = new Option(
 	"Diff scope: work (staged + unstaged + untracked), staged, or unstaged (default: auto-detect)",
 ).choices(Object.values(WORKING_TREE_REF));
 
+const modelOption = new Option(
+	"--model <model>",
+	"Default model for headless chapter generation from the dashboard",
+)
+	.choices(Object.values(GENERATION_MODEL))
+	.default(GENERATION_MODEL.SONNET);
+
 interface DiffCommandOptions {
 	base?: string;
 	compare?: string;
 	ref?: string;
 	pr?: string;
+}
+
+/**
+ * Adds the shared diff-scope arguments/options (refs, --base, --compare, --pr, --ref)
+ * to a command. Every command that recomputes a diff scope takes the same inputs.
+ */
+function withDiffScope(cmd: Command): Command {
+	return cmd
+		.argument("[refs...]", "Git refs to diff, for example: main, main feature, or main..feature")
+		.option("--base <ref>", "Base ref to diff against (default: auto-detect main/master)")
+		.option("--compare <ref>", "Compare ref to diff against --base")
+		.option("--pr <ref>", "Review a GitHub pull request by number or URL")
+		.addOption(refOption);
 }
 
 /**
@@ -43,37 +69,87 @@ function toDiffScopeOptions(refs: string[], opts: DiffCommandOptions): DiffScope
 		) {
 			throw new Error("--pr cannot be combined with git refs, --base, --compare, or --ref.");
 		}
-		return { pr: opts.pr };
+		return { cwd: process.cwd(), pr: opts.pr };
 	}
 	const workingTreeRef =
 		opts.ref !== undefined ? z.enum(WORKING_TREE_REF).parse(opts.ref) : undefined;
-	return { base: opts.base, compare: opts.compare, refs, workingTreeRef };
+	return { cwd: process.cwd(), base: opts.base, compare: opts.compare, refs, workingTreeRef };
 }
 
-program
-	.command("prep")
-	.description("Parse the current branch diff and prepare input for chapter generation")
-	.argument("[refs...]", "Git refs to diff, for example: main, main feature, or main..feature")
-	.option("--base <ref>", "Base ref to diff against (default: auto-detect main/master)")
-	.option("--compare <ref>", "Compare ref to diff against --base")
-	.option("--pr <ref>", "Review a GitHub pull request by number or URL")
-	.addOption(refOption)
-	.action(async (refs: string[], opts: DiffCommandOptions) => {
-		const filePath = await runPrep(toDiffScopeOptions(refs, opts));
-		process.stdout.write(filePath);
+withDiffScope(
+	program
+		.command("prep")
+		.description("Parse the current branch diff and prepare input for chapter generation"),
+).action(async (refs: string[], opts: DiffCommandOptions) => {
+	const filePath = await runPrep(toDiffScopeOptions(refs, opts));
+	process.stdout.write(filePath);
+});
+
+withDiffScope(
+	program
+		.command("show")
+		.description("Load a chapters.json file and open it in a local browser")
+		.argument("<path>", "Path to a chapters.json file")
+		.addOption(modelOption),
+).action(async (jsonPath: string, refs: string[], opts: DiffCommandOptions & { model: string }) => {
+	await show(jsonPath, {
+		...toDiffScopeOptions(refs, opts),
+		model: z.enum(GENERATION_MODEL).parse(opts.model),
 	});
+});
+
+withDiffScope(
+	program
+		.command("import")
+		.description("Load a chapters.json file into the local database without opening a browser")
+		.argument("<path>", "Path to a chapters.json file"),
+).action(async (jsonPath: string, refs: string[], opts: DiffCommandOptions) => {
+	const runId = await runImport(jsonPath, toDiffScopeOptions(refs, opts));
+	closeDb();
+	process.stdout.write(`${runId}\n`);
+});
 
 program
-	.command("show")
-	.description("Load a chapters.json file and open it in a local browser")
-	.argument("<path>", "Path to a chapters.json file")
-	.argument("[refs...]", "Git refs to diff, for example: main, main feature, or main..feature")
-	.option("--base <ref>", "Base ref to diff against (default: auto-detect main/master)")
-	.option("--compare <ref>", "Compare ref to diff against --base")
-	.option("--pr <ref>", "Review a GitHub pull request by number or URL")
-	.addOption(refOption)
-	.action(async (jsonPath: string, refs: string[], opts: DiffCommandOptions) => {
-		await show(jsonPath, toDiffScopeOptions(refs, opts));
+	.command("start")
+	.description("Start the Stage dashboard: browse past runs and PRs awaiting your review")
+	.option("--no-open", "Do not open a browser")
+	.addOption(modelOption)
+	.action(async (opts: { open: boolean; model: string }) => {
+		await start({ open: opts.open, model: z.enum(GENERATION_MODEL).parse(opts.model) });
+	});
+
+const config = program.command("config").description("Manage Stage configuration");
+
+config
+	.command("add-root")
+	.description("Add a directory Stage scans for local git clones")
+	.argument("<path>", "Path to a directory containing clones")
+	.action((rootPath: string) => {
+		const resolved = path.resolve(rootPath);
+		addCloneRoot(getDb(), resolved);
+		closeDb();
+		process.stdout.write(`Added ${resolved}\n`);
+	});
+
+config
+	.command("remove-root")
+	.description("Remove a clone search root")
+	.argument("<path>", "The root path to remove")
+	.action((rootPath: string) => {
+		removeCloneRoot(getDb(), path.resolve(rootPath));
+		closeDb();
+		process.stdout.write(`Removed ${path.resolve(rootPath)}\n`);
+	});
+
+config
+	.command("list-roots")
+	.description("List clone search roots")
+	.action(() => {
+		const roots = listCloneRoots(getDb());
+		closeDb();
+		process.stdout.write(
+			roots.length ? `${roots.map((r) => r.path).join("\n")}\n` : "No clone roots configured.\n",
+		);
 	});
 
 program.parseAsync(process.argv).catch((err) => {

@@ -102,7 +102,7 @@ describe("resolveScope", () => {
 	it("compares two positional refs through their merge base", async () => {
 		const { commonSha, mainSha, featureSha } = await initDivergedRepo();
 
-		const result = resolveScope({ refs: ["main", "feature"] });
+		const result = resolveScope({ cwd: tmpDir, refs: ["main", "feature"] });
 
 		expect(mainSha).not.toBe(featureSha);
 		expect(result.scope.kind).toBe(SCOPE_KIND.COMMITTED);
@@ -116,7 +116,7 @@ describe("resolveScope", () => {
 	it("compares range refs through their merge base", async () => {
 		const { commonSha, featureSha } = await initDivergedRepo();
 
-		const result = resolveScope({ refs: ["main..feature"] });
+		const result = resolveScope({ cwd: tmpDir, refs: ["main..feature"] });
 
 		expect(result.scope.kind).toBe(SCOPE_KIND.COMMITTED);
 		expect(result.scope.baseSha).toBe(commonSha);
@@ -127,7 +127,7 @@ describe("resolveScope", () => {
 	it("defaults a missing left range ref to HEAD", async () => {
 		const { commonSha, featureSha } = await initDivergedRepo();
 
-		const result = resolveScope({ refs: ["..feature"] });
+		const result = resolveScope({ cwd: tmpDir, refs: ["..feature"] });
 
 		expect(result.scope.kind).toBe(SCOPE_KIND.COMMITTED);
 		expect(result.scope.baseSha).toBe(commonSha);
@@ -138,7 +138,7 @@ describe("resolveScope", () => {
 	it("defaults a missing right range ref to HEAD", async () => {
 		const { commonSha, mainSha } = await initDivergedRepo();
 
-		const result = resolveScope({ refs: ["feature.."] });
+		const result = resolveScope({ cwd: tmpDir, refs: ["feature.."] });
 
 		expect(result.scope.kind).toBe(SCOPE_KIND.COMMITTED);
 		expect(result.scope.baseSha).toBe(commonSha);
@@ -149,7 +149,7 @@ describe("resolveScope", () => {
 	it("compares --base and --compare through their merge base", async () => {
 		const { commonSha, featureSha } = await initDivergedRepo();
 
-		const result = resolveScope({ base: "main", compare: "feature" });
+		const result = resolveScope({ cwd: tmpDir, base: "main", compare: "feature" });
 
 		expect(result.scope.kind).toBe(SCOPE_KIND.COMMITTED);
 		expect(result.scope.baseSha).toBe(commonSha);
@@ -166,7 +166,7 @@ describe("resolveScope", () => {
 		git("add", "file.txt");
 		await writeFile("file.txt", "common\nmain\nstaged index change\nunstaged change\n");
 
-		const result = resolveScope({ refs: ["staged"] });
+		const result = resolveScope({ cwd: tmpDir, refs: ["staged"] });
 
 		expect(result.scope.kind).toBe(SCOPE_KIND.WORKING_TREE);
 		if (result.scope.kind !== SCOPE_KIND.WORKING_TREE) {

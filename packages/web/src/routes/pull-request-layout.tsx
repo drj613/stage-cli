@@ -4,7 +4,7 @@ import { type CSSProperties, useCallback, useMemo, useRef, useState } from "reac
 import { DiffSettingsForm } from "@/components/diff/diff-settings-form";
 import { PullRequestHeader } from "@/components/pull-request/pull-request-header";
 import { PullRequestHeaderSkeleton } from "@/components/pull-request/pull-request-header-skeleton";
-import { SectionLabel } from "@/components/pull-request/section-label";
+import { SectionLabel } from "@/components/shared/section-label";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";

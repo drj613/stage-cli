@@ -97,6 +97,29 @@ Examples:
 /stage-chapters --pr https://github.com/owner/repo/pull/123
 ```
 
+### The dashboard: `stagereview start`
+
+```bash
+stagereview start            # open the dashboard in a browser
+stagereview start --no-open  # print the URL only
+stagereview start --model opus  # default model for one-click generation
+```
+
+Starts a long-lived local server with a home dashboard showing:
+
+- **Waiting on your review** — open PRs across all orgs where your review is requested (via `gh search prs`; requires `gh auth login`). Each row links to an existing chapter run, or offers one-click **Generate chapters**, which runs a headless `claude -p` session (Sonnet by default) in a local clone stage already knows and imports the result. Generation runs sequentially and asks for confirmation first, since each run counts against your Claude usage limits.
+- **Recent runs** — every past chapter run, newest first, linking into the review UI.
+
+Runs live in one global database (`~/.stage/db.sqlite`), so the dashboard sees runs from every repo no matter where you start it.
+
+### Headless import: `stagereview import`
+
+```bash
+stagereview import chapters.json --pr 123
+```
+
+Same arguments as `show`, but inserts the run into the database and prints the new run's `runId` without starting a server or opening a browser. Used by the dashboard's headless generation; handy for any scripted flow.
+
 ### `.stageignore`
 
 Add a `.stageignore` file to your repo root to exclude files from the diff analysis. Uses `.gitignore`-style patterns, one per line:

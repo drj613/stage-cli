@@ -1,73 +1,14 @@
-import fs from "node:fs/promises";
-import http from "node:http";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { closeDb, getDb } from "../db/client.js";
-import { runRoutes } from "../routes/runs.js";
+import { describe, expect, it } from "vitest";
+import { getDb } from "../db/client.js";
 import { insertChaptersFile } from "../runs/import-chapters.js";
-import { LOOPBACK_HOST, type ServerHandle, startServer } from "../server.js";
 import { makeFixture, makeRepoContext } from "./fixtures.js";
+import { getJson, setupRunRoutesTest } from "./runs-route-harness.js";
 
-let tmpDir: string;
-let dbPath: string;
-let webDist: string;
-const handles: ServerHandle[] = [];
-
-beforeEach(async () => {
-	tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage-cli-routes-"));
-	dbPath = path.join(tmpDir, "db.sqlite");
-	webDist = path.join(tmpDir, "web-dist");
-	await fs.mkdir(webDist);
-	await fs.writeFile(path.join(webDist, "index.html"), "<html></html>");
-	closeDb();
-});
-
-afterEach(async () => {
-	while (handles.length > 0) {
-		const h = handles.pop();
-		if (h) await h.close();
-	}
-	closeDb();
-	await fs.rm(tmpDir, { recursive: true, force: true });
-});
-
-async function startWithRoutes(): Promise<ServerHandle> {
-	const db = getDb({ dbPath });
-	const handle = await startServer({ webDistPath: webDist, routes: runRoutes(db) });
-	handles.push(handle);
-	return handle;
-}
-
-interface JsonResponse {
-	status: number;
-	body: unknown;
-}
-
-function getJson(port: number, requestPath: string): Promise<JsonResponse> {
-	return new Promise((resolve, reject) => {
-		const req = http.request(
-			{ hostname: LOOPBACK_HOST, port, method: "GET", path: requestPath, agent: false },
-			(res) => {
-				const chunks: Buffer[] = [];
-				res.on("data", (c: Buffer) => chunks.push(c));
-				res.on("end", () => {
-					const text = Buffer.concat(chunks).toString("utf8");
-					resolve({
-						status: res.statusCode ?? 0,
-						body: text ? JSON.parse(text) : null,
-					});
-				});
-			},
-		);
-		req.on("error", reject);
-		req.end();
-	});
-}
+const env = setupRunRoutesTest("stage-cli-routes-");
 
 describe("runs API", () => {
 	it("GET /api/runs/:runId/chapters returns chapters with nested keyChanges sorted by chapterIndex", async () => {
-		const db = getDb({ dbPath });
+		const db = getDb({ dbPath: env.dbPath });
 		const fixture = makeFixture({
 			chapters: [
 				{
@@ -95,7 +36,7 @@ describe("runs API", () => {
 		});
 		const { runId } = insertChaptersFile(db, fixture, makeRepoContext());
 
-		const { port } = await startWithRoutes();
+		const { port } = await env.startWithRoutes();
 		const res = await getJson(port, `/api/runs/${runId}/chapters`);
 
 		expect(res.status).toBe(200);
@@ -118,7 +59,7 @@ describe("runs API", () => {
 	});
 
 	it("returns key_change rows in insertion order (matching hosted stage's natural query order)", async () => {
-		const db = getDb({ dbPath });
+		const db = getDb({ dbPath: env.dbPath });
 		const fixture = makeFixture({
 			chapters: [
 				{
@@ -146,7 +87,7 @@ describe("runs API", () => {
 		});
 		const { runId } = insertChaptersFile(db, fixture, makeRepoContext());
 
-		const { port } = await startWithRoutes();
+		const { port } = await env.startWithRoutes();
 		const res = await getJson(port, `/api/runs/${runId}/chapters`);
 
 		const body = res.body as {
@@ -160,10 +101,10 @@ describe("runs API", () => {
 	});
 
 	it("omits the denormalized chapter.keyChanges content array from the response", async () => {
-		const db = getDb({ dbPath });
+		const db = getDb({ dbPath: env.dbPath });
 		const { runId } = insertChaptersFile(db, makeFixture(), makeRepoContext());
 
-		const { port } = await startWithRoutes();
+		const { port } = await env.startWithRoutes();
 		const res = await getJson(port, `/api/runs/${runId}/chapters`);
 
 		const body = res.body as { chapters: Array<{ keyChanges: unknown[] }> };
@@ -171,10 +112,10 @@ describe("runs API", () => {
 	});
 
 	it("GET /api/runs/:runId/chapters returns prologue: null when no prologue was imported", async () => {
-		const db = getDb({ dbPath });
+		const db = getDb({ dbPath: env.dbPath });
 		const { runId } = insertChaptersFile(db, makeFixture(), makeRepoContext());
 
-		const { port } = await startWithRoutes();
+		const { port } = await env.startWithRoutes();
 		const res = await getJson(port, `/api/runs/${runId}/chapters`);
 
 		expect(res.status).toBe(200);
@@ -183,7 +124,7 @@ describe("runs API", () => {
 	});
 
 	it("GET /api/runs/:runId/chapters includes the prologue when imported", async () => {
-		const db = getDb({ dbPath });
+		const db = getDb({ dbPath: env.dbPath });
 		const prologue = {
 			motivation: "Slow page loads on large repos.",
 			outcome: "Pages load fast now.",
@@ -204,7 +145,7 @@ describe("runs API", () => {
 		};
 		const { runId } = insertChaptersFile(db, makeFixture({ prologue }), makeRepoContext());
 
-		const { port } = await startWithRoutes();
+		const { port } = await env.startWithRoutes();
 		const res = await getJson(port, `/api/runs/${runId}/chapters`);
 
 		expect(res.status).toBe(200);
@@ -213,7 +154,7 @@ describe("runs API", () => {
 	});
 
 	it("GET /api/runs/:runId/chapters returns 404 for unknown runs", async () => {
-		const { port } = await startWithRoutes();
+		const { port } = await env.startWithRoutes();
 		const res = await getJson(port, "/api/runs/00000000-0000-0000-0000-000000000000/chapters");
 		expect(res.status).toBe(404);
 	});
