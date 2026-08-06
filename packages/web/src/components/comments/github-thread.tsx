@@ -48,7 +48,11 @@ export function GitHubThreadView({ thread }: { thread: AnchoredGitHubThread }) {
 	const submitReply = async (body: string) => {
 		setError(null);
 		try {
-			await github.replyToGitHubThread({ commentId: root.githubCommentId, body });
+			await github.replyToGitHubThread({
+				commentId: root.githubCommentId,
+				body,
+				prNumber: thread.prNumber,
+			});
 			setIsReplying(false);
 		} catch (err) {
 			setError(errorMessage(err, "Failed to post the reply to GitHub"));

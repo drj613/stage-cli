@@ -11,6 +11,7 @@ function makeLocal(over: Partial<CommentThread> = {}): CommentThread {
 		startLine: 5,
 		endLine: 5,
 		pending: true,
+		prNumber: 1,
 		resolvedAt: null,
 		createdAt: "2026-07-01T00:00:00Z",
 		updatedAt: "2026-07-01T00:00:00Z",
@@ -33,6 +34,7 @@ function makeGitHubComment(): GitHubComment {
 function makeGitHub(over: Partial<GitHubThread> = {}): GitHubThread {
 	return {
 		githubThreadId: "RT_1",
+		prNumber: 1,
 		filePath: "src/foo.ts",
 		anchor: { side: "additions", startLine: 10, endLine: 10 },
 		isResolved: false,

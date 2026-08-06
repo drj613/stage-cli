@@ -12,7 +12,7 @@ import {
 	startWithRoutes,
 } from "./github-review-submit-harness.js";
 
-describe("POST /api/runs/:runId/review", () => {
+describe("POST /api/runs/:runId/reviews/:prNumber", () => {
 	it("submits pending threads as one review and deletes them locally", async () => {
 		await env.writeFakeGh(SUCCESS_GH_SCRIPT);
 		const runId = env.seedRun(7);
@@ -20,7 +20,7 @@ describe("POST /api/runs/:runId/review", () => {
 		await createThread(port, runId, { body: "pending A", startLine: 5, endLine: 5 });
 		await createThread(port, runId, { body: "pending B", startLine: 6, endLine: 10 });
 
-		const res = await send(port, "POST", `/api/runs/${runId}/review`, {
+		const res = await send(port, "POST", `/api/runs/${runId}/reviews/7`, {
 			event: "REQUEST_CHANGES",
 			body: "Overall summary",
 		});
@@ -49,7 +49,7 @@ describe("POST /api/runs/:runId/review", () => {
 		const { port } = await startWithRoutes();
 		await createThread(port, runId, { body: "pending A" });
 
-		const res = await send(port, "POST", `/api/runs/${runId}/review`, {
+		const res = await send(port, "POST", `/api/runs/${runId}/reviews/7`, {
 			event: "APPROVE",
 			body: "",
 		});
@@ -67,7 +67,7 @@ describe("POST /api/runs/:runId/review", () => {
 		await createThread(port, prRunId, { body: "pending" });
 		await createThread(port, plainRunId, { body: "note" });
 
-		await send(port, "POST", `/api/runs/${prRunId}/review`, { event: "COMMENT", body: "x" });
+		await send(port, "POST", `/api/runs/${prRunId}/reviews/7`, { event: "COMMENT", body: "x" });
 
 		const db = getDb({ dbPath: env.dbPath });
 		const rows = db.select().from(commentThread).all();
@@ -80,7 +80,7 @@ describe("POST /api/runs/:runId/review", () => {
 		const runId = env.seedRun(7);
 		const { port } = await startWithRoutes();
 
-		const res = await send(port, "POST", `/api/runs/${runId}/review`, {
+		const res = await send(port, "POST", `/api/runs/${runId}/reviews/7`, {
 			event: "APPROVE",
 			body: "LGTM",
 		});
@@ -96,7 +96,7 @@ describe("POST /api/runs/:runId/review", () => {
 		const res = await send(
 			port,
 			"POST",
-			"/api/runs/any/review",
+			"/api/runs/any/reviews/7",
 			{ event: "COMMENT", body: "x" },
 			{ Origin: "http://evil.example" },
 		);
@@ -106,7 +106,7 @@ describe("POST /api/runs/:runId/review", () => {
 	it("returns 404 for an unknown run", async () => {
 		await env.writeFakeGh(SUCCESS_GH_SCRIPT);
 		const { port } = await startWithRoutes();
-		const res = await send(port, "POST", "/api/runs/missing/review", {
+		const res = await send(port, "POST", "/api/runs/missing/reviews/7", {
 			event: "COMMENT",
 			body: "x",
 		});

@@ -38,14 +38,21 @@ export function ReviewToolbar() {
 	// (replies are folded into that comment's body), so threads and comments count
 	// 1:1 here. Resolved threads are excluded to match the submit route, which
 	// never publishes a thread the user already marked resolved.
-	const pendingCount = useMemo(
-		() =>
-			threads.reduce(
-				(count, thread) => (thread.pending && !thread.resolvedAt ? count + 1 : count),
-				0,
-			),
+	const pendingThreads = useMemo(
+		() => threads.filter((thread) => thread.pending && !thread.resolvedAt),
 		[threads],
 	);
+	const pendingCount = pendingThreads.length;
+
+	// One GitHub review per pull request. For a single-PR run this is one entry;
+	// for a stack it is one per member that actually has pending feedback.
+	const targetPrNumbers = useMemo(() => {
+		const numbers = new Set<number>();
+		for (const thread of pendingThreads) {
+			if (thread.prNumber !== null) numbers.add(thread.prNumber);
+		}
+		return [...numbers].sort((a, b) => a - b);
+	}, [pendingThreads]);
 
 	const radioGroupName = useId();
 	const [isOpen, setIsOpen] = useState(false);
@@ -74,17 +81,33 @@ export function ReviewToolbar() {
 
 	async function submit() {
 		setIsSubmitting(true);
-		try {
-			await github.submitReview({ event, body: body.trim() });
-			setBody("");
-			setEvent(REVIEW_EVENT.COMMENT);
-			setIsOpen(false);
-			toast.success("Review submitted");
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : "Failed to submit review");
-		} finally {
-			setIsSubmitting(false);
+		// Sequential, not concurrent: each is a `gh` shell-out, and reporting
+		// "2 of 3 submitted" honestly beats racing them and guessing which failed.
+		const failed: number[] = [];
+		let submitted = 0;
+		for (const prNumber of targetPrNumbers) {
+			try {
+				await github.submitReview({ event, body: body.trim(), prNumber });
+				submitted += 1;
+			} catch {
+				failed.push(prNumber);
+			}
 		}
+		setIsSubmitting(false);
+
+		if (failed.length > 0) {
+			toast.error(
+				`Failed to submit to ${failed.map((n) => `#${n}`).join(", ")}` +
+					(submitted > 0 ? ` — ${submitted} other review(s) went through` : ""),
+			);
+			return;
+		}
+		setBody("");
+		setEvent(REVIEW_EVENT.COMMENT);
+		setIsOpen(false);
+		toast.success(
+			targetPrNumbers.length > 1 ? `Review submitted to ${submitted} PRs` : "Review submitted",
+		);
 	}
 
 	return (

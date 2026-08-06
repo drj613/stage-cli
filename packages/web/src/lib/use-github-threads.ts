@@ -38,8 +38,13 @@ export interface UseGitHubThreadsResult {
 	// state of their own: each rejects on failure, so callers must `try`/`catch`
 	// (or handle the rejection) around the call to detect and surface it — e.g.
 	// as a toast. This mirrors the standard TanStack `mutateAsync` pattern.
-	submitReview: (input: SubmitReviewBody) => Promise<void>;
-	replyToGitHubThread: (input: { commentId: string; body: string }) => Promise<void>;
+	submitReview: (input: SubmitReviewBody & { prNumber: number }) => Promise<void>;
+	replyToGitHubThread: (input: {
+		commentId: string;
+		body: string;
+		/** The PR the thread lives on — for a lower stack member, not the run's tip. */
+		prNumber: number;
+	}) => Promise<void>;
 	setGitHubThreadResolved: (input: { threadNodeId: string; resolved: boolean }) => Promise<void>;
 }
 
@@ -66,8 +71,13 @@ export function useGitHubThreads(runId: string): UseGitHubThreadsResult {
 	);
 
 	const submitMutation = useMutation({
-		mutationFn: async (input: SubmitReviewBody) => {
-			await jsonFetch(`/api/runs/${encodeURIComponent(runId)}/review`, jsonRequest("POST", input));
+		// One request per PR: a stack's members are separate GitHub reviews, and
+		// pretending otherwise would hide a failure on one of them.
+		mutationFn: async ({ prNumber, ...input }: SubmitReviewBody & { prNumber: number }) => {
+			await jsonFetch(
+				`/api/runs/${encodeURIComponent(runId)}/reviews/${prNumber}`,
+				jsonRequest("POST", input),
+			);
 		},
 		onSuccess: async () => {
 			// The server deletes the run's local pending threads on a successful
@@ -82,10 +92,18 @@ export function useGitHubThreads(runId: string): UseGitHubThreadsResult {
 	});
 
 	const replyMutation = useMutation({
-		mutationFn: async ({ commentId, body }: { commentId: string; body: string }) => {
+		mutationFn: async ({
+			commentId,
+			body,
+			prNumber,
+		}: {
+			commentId: string;
+			body: string;
+			prNumber: number;
+		}) => {
 			await jsonFetch(
 				`/api/runs/${encodeURIComponent(runId)}/github-threads/${encodeURIComponent(commentId)}/replies`,
-				jsonRequest("POST", { body }),
+				jsonRequest("POST", { body, prNumber }),
 			);
 		},
 		onSuccess: invalidate,

@@ -22,8 +22,10 @@ export const CommentThreadSchema = z.object({
 	side: z.enum(DIFF_SIDE),
 	startLine: z.number().int().positive(),
 	endLine: z.number().int().positive(),
-	/** True when this thread is an unsubmitted review comment for the run's PR. */
+	/** True when this thread is an unsubmitted review comment for a pull request. */
 	pending: z.boolean(),
+	/** The pull request this thread targets, or null for a purely local note. */
+	prNumber: z.number().nullable(),
 	resolvedAt: z.string().nullable(),
 	createdAt: z.string(),
 	updatedAt: z.string(),

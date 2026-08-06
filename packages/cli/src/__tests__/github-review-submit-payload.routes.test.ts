@@ -11,14 +11,14 @@ import {
 	startWithRoutes,
 } from "./github-review-submit-harness.js";
 
-describe("POST /api/runs/:runId/review — payload construction and validation", () => {
+describe("POST /api/runs/:runId/reviews/:prNumber — payload construction and validation", () => {
 	it("maps a deletions-side thread to the LEFT side", async () => {
 		await env.writeFakeGh(SUCCESS_GH_SCRIPT);
 		const runId = env.seedRun(7);
 		const { port } = await startWithRoutes();
 		await createThread(port, runId, { side: "deletions", startLine: 3, endLine: 3 });
 
-		await send(port, "POST", `/api/runs/${runId}/review`, { event: "COMMENT", body: "x" });
+		await send(port, "POST", `/api/runs/${runId}/reviews/7`, { event: "COMMENT", body: "x" });
 
 		const payload = JSON.parse(await fs.readFile(path.join(env.binDir, "stdin.log"), "utf8"));
 		expect(payload.comments[0]).toMatchObject({ side: "LEFT" });
@@ -32,7 +32,7 @@ describe("POST /api/runs/:runId/review — payload construction and validation",
 		const thread = await createThread(port, runId, { body: "first" });
 		await send(port, "POST", `/api/comment-threads/${thread.id}/replies`, { body: "second" });
 
-		await send(port, "POST", `/api/runs/${runId}/review`, { event: "COMMENT", body: "x" });
+		await send(port, "POST", `/api/runs/${runId}/reviews/7`, { event: "COMMENT", body: "x" });
 
 		const payload = JSON.parse(await fs.readFile(path.join(env.binDir, "stdin.log"), "utf8"));
 		expect(payload.comments[0].body).toBe("first\n\n---\n\nsecond");
@@ -43,10 +43,10 @@ describe("POST /api/runs/:runId/review — payload construction and validation",
 		const runId = env.seedRun(7);
 		const { port } = await startWithRoutes();
 
-		const missingEvent = await send(port, "POST", `/api/runs/${runId}/review`, { body: "x" });
+		const missingEvent = await send(port, "POST", `/api/runs/${runId}/reviews/7`, { body: "x" });
 		expect(missingEvent.status).toBe(400);
 
-		const invalidEvent = await send(port, "POST", `/api/runs/${runId}/review`, {
+		const invalidEvent = await send(port, "POST", `/api/runs/${runId}/reviews/7`, {
 			event: "NOT_A_REAL_EVENT",
 			body: "x",
 		});
@@ -60,7 +60,7 @@ describe("POST /api/runs/:runId/review — payload construction and validation",
 		const thread = await createThread(port, runId, { body: "pending" });
 		await send(port, "PATCH", `/api/comment-threads/${thread.id}`, { resolved: true });
 
-		const res = await send(port, "POST", `/api/runs/${runId}/review`, {
+		const res = await send(port, "POST", `/api/runs/${runId}/reviews/7`, {
 			event: "COMMENT",
 			body: "x",
 		});

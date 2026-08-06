@@ -20,11 +20,13 @@ import {
 	submitReview,
 } from "../github/mutations.js";
 import { fetchReviewThreads } from "../github/review-comments.js";
+import { listRunMembers } from "../runs/run-members.js";
 import { DIFF_SIDE } from "../schema.js";
 import type { Route } from "../server.js";
 import { parseJsonBody, writeJson } from "./json.js";
 import {
 	enforceSameOrigin,
+	parseNumber,
 	requireRepo,
 	resolveRun,
 	runGhMutation,
@@ -55,31 +57,54 @@ export function gitHubThreadRoutes(db: StageDb): Route[] {
 				const run = resolveRun(db, params, res);
 				if (!run) return;
 				const repo = parseGitHubRepo(run.originUrl);
-				const prNumber = run.prNumbers[0];
-				if (!repo || prNumber === undefined) {
+				const members = listRunMembers(db, run.runId);
+				if (!repo || members.length === 0) {
 					writeJson(res, 200, UNAVAILABLE);
 					return;
 				}
-				const threads = await fetchReviewThreads(run.repoRoot, repo, prNumber, run.headSha);
-				if (threads === null) {
+				// One fetch per member; each thread carries the PR it came from (stamped
+				// by fetchReviewThreads) so replies route back to it. A member that
+				// fails to fetch makes the whole response unavailable rather than
+				// silently showing a subset — a half-populated list reads as "no
+				// feedback here", which is the wrong thing to tell a reviewer.
+				const perMember = await Promise.all(
+					members.map(async (member) => {
+						const threads = await fetchReviewThreads(
+							run.repoRoot,
+							repo,
+							member.prNumber,
+							member.headSha,
+						);
+						return threads;
+					}),
+				);
+				if (perMember.some((threads) => threads === null)) {
 					writeJson(res, 200, UNAVAILABLE);
 					return;
 				}
+				const threads = perMember.flatMap((memberThreads) => memberThreads ?? []);
 				writeJson(res, 200, { available: true, threads } satisfies GitHubThreadsResponse);
 			},
 		},
 		{
 			method: "POST",
-			pattern: "/api/runs/:runId/review",
+			pattern: "/api/runs/:runId/reviews/:prNumber",
 			handler: async (req, res, params) => {
 				if (!enforceSameOrigin(req, res)) return;
 				const run = resolveRun(db, params, res);
 				if (!run) return;
 				const repo = requireRepo(run, res);
 				if (!repo) return;
-				const prNumber = run.prNumbers[0];
-				if (prNumber === undefined) {
-					writeJson(res, 400, { error: "Run has no associated pull request" });
+				// One PR at a time. N GitHub mutations are not atomic, so pretending a
+				// stack submits as one review would hide a partial failure; the caller
+				// issues one request per member and reports each result.
+				const prNumber = parseNumber(params.prNumber ?? null);
+				const member =
+					prNumber === null
+						? undefined
+						: listRunMembers(db, run.runId).find((m) => m.prNumber === prNumber);
+				if (prNumber === null || member === undefined) {
+					writeJson(res, 400, { error: "Run does not review that pull request" });
 					return;
 				}
 				const body = await parseJsonBody(req, res, SubmitReviewBodySchema);
@@ -91,7 +116,10 @@ export function gitHubThreadRoutes(db: StageDb): Route[] {
 					res,
 					async () => {
 						await submitReview(run.repoRoot, repo, prNumber, {
-							commit_id: run.headSha,
+							// The member's own head. The run's headSha is the tip of the
+							// stack, which is not a commit of a lower PR — GitHub rejects a
+							// review anchored outside the PR it is filed against.
+							commit_id: member.headSha,
 							event: body.event,
 							body: body.body,
 							comments,
@@ -124,8 +152,7 @@ export function gitHubThreadRoutes(db: StageDb): Route[] {
 				const repo = requireRepo(run, res);
 				if (!repo) return;
 				const commentId = params.commentId;
-				const prNumber = run.prNumbers[0];
-				if (prNumber === undefined || !commentId) {
+				if (!commentId) {
 					writeJson(res, 400, { error: "Run has no associated pull request" });
 					return;
 				}
@@ -135,6 +162,13 @@ export function gitHubThreadRoutes(db: StageDb): Route[] {
 				}
 				const body = await parseJsonBody(req, res, GitHubReplyBodySchema);
 				if (!body) return;
+				// A thread on a lower member does not live on the run's tip, so the
+				// reply is routed by the thread's own PR when the caller names one.
+				const prNumber = body.prNumber ?? run.prNumbers[0];
+				if (prNumber === undefined || !run.prNumbers.includes(prNumber)) {
+					writeJson(res, 400, { error: "Run does not review that pull request" });
+					return;
+				}
 				const replied = await runGhMutation(
 					res,
 					() => replyToReviewComment(run.repoRoot, repo, prNumber, commentId, body.body),

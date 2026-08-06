@@ -96,6 +96,8 @@ const SIDE_FROM_GH: Record<"LEFT" | "RIGHT", DiffSide> = {
 export interface AnchorContext {
 	runHeadSha: string;
 	prHeadSha: string;
+	/** The PR these threads were fetched from — a stack run fetches from several. */
+	prNumber: number;
 }
 
 /**
@@ -117,6 +119,7 @@ export function mapReviewThread(node: GhReviewThreadNode, ctx: AnchorContext): G
 			: null;
 	return {
 		githubThreadId: node.id,
+		prNumber: ctx.prNumber,
 		filePath: node.path,
 		anchor,
 		isResolved: node.isResolved,
@@ -171,7 +174,7 @@ export async function fetchReviewThreads(
 			if (!parsed.success) return null;
 			const pr = parsed.data.data.repository?.pullRequest;
 			if (!pr) return null;
-			const ctx: AnchorContext = { runHeadSha, prHeadSha: pr.headRefOid };
+			const ctx: AnchorContext = { runHeadSha, prHeadSha: pr.headRefOid, prNumber };
 			for (const node of pr.reviewThreads.nodes) threads.push(mapReviewThread(node, ctx));
 			if (!pr.reviewThreads.pageInfo.hasNextPage) return threads;
 			cursor = pr.reviewThreads.pageInfo.endCursor;

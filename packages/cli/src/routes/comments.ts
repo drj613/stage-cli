@@ -317,6 +317,7 @@ function toThreadDto(thread: CommentThreadRow, comments: CommentRow[]): CommentT
 		startLine: thread.startLine,
 		endLine: thread.endLine,
 		pending: thread.prNumber !== null,
+		prNumber: thread.prNumber,
 		resolvedAt: thread.resolvedAt?.toISOString() ?? null,
 		createdAt: thread.createdAt.toISOString(),
 		updatedAt: thread.updatedAt.toISOString(),
