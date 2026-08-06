@@ -38,7 +38,7 @@ export function coreRoutes(db: StageDb, defaultModel: GenerationModel): Route[] 
 		...pullRequestMutationRoutes(db),
 		...gitHubThreadRoutes(db),
 		...pullRequestListRoutes(db, jobs, registry),
-		...stackRoutes(),
+		...stackRoutes(db, jobs, registry),
 		...browseRoutes(db, registry),
 		...cloneRootRoutes(db, registry),
 		...generateRoutes(jobs, registry, defaultModel),

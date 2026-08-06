@@ -33,7 +33,7 @@ const LIVE = { requestedModel: "sonnet", progress: null, isRunning: true };
 const FROZEN = { requestedModel: "sonnet", progress: null, isRunning: false };
 
 const READY: PrResolution = { state: "ready", runId: "run-1" };
-const STALE: PrResolution = { state: "stale", runId: "run-1", headSha: "abc" };
+const STALE: PrResolution = { state: "stale", runId: "run-1", movedPrNumbers: [7] };
 const FAILED: PrResolution = { state: "failed", jobId: "job-1", error: "agent crashed" };
 const NEEDS_GENERATION: PrResolution = { state: "needs-generation" };
 const NO_CLONE: PrResolution = { state: "no-clone", nameWithOwner: "o/r" };

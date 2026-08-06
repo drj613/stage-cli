@@ -110,7 +110,7 @@ describe("usePrResolution — auto-generation gating", () => {
 	it("does not auto-POST when the resolution is stale", async () => {
 		const postCalls: unknown[] = [];
 		installFetch({
-			resolutions: [{ state: "stale", runId: "run-1", headSha: "abc123" }],
+			resolutions: [{ state: "stale", runId: "run-1", movedPrNumbers: [7] }],
 			postCalls,
 		});
 		const { result } = renderHook(() => usePrResolution(ADDRESS), {

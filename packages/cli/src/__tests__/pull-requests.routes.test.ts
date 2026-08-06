@@ -90,12 +90,12 @@ describe("pull-requests routes", () => {
 		expect(res.body).toMatchObject({ state: "ready" });
 	});
 
-	it("returns stale with runId and headSha when the head moved", async () => {
+	it("returns stale naming the moved PR when the head moved", async () => {
 		seedRun(HEAD_SHA);
 		const port = await start(async () => OTHER_SHA);
 		const res = await request(port, `/api/pull-requests/acme/widgets/${PR_NUMBER}`);
 		expect(res.status).toBe(200);
-		expect(res.body).toMatchObject({ state: "stale", headSha: HEAD_SHA });
+		expect(res.body).toMatchObject({ state: "stale", movedPrNumbers: [PR_NUMBER] });
 	});
 
 	it("returns ready when the live-head check fails (offline)", async () => {

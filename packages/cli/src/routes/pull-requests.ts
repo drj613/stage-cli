@@ -95,7 +95,7 @@ export function pullRequestListRoutes(
 						writeJson(res, 200, {
 							state: PR_RESOLUTION.STALE,
 							runId: run.runId,
-							headSha: run.headSha,
+							movedPrNumbers: [number],
 						} satisfies PrResolution);
 						return;
 					}

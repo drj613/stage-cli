@@ -45,7 +45,12 @@ export type PrResolutionState = (typeof PR_RESOLUTION)[keyof typeof PR_RESOLUTIO
  */
 export const PrResolutionSchema = z.discriminatedUnion("state", [
 	z.object({ state: z.literal(PR_RESOLUTION.READY), runId: z.string() }),
-	z.object({ state: z.literal(PR_RESOLUTION.STALE), runId: z.string(), headSha: z.string() }),
+	z.object({
+		state: z.literal(PR_RESOLUTION.STALE),
+		runId: z.string(),
+		/** Members whose head moved since the run was generated. One entry for a single PR. */
+		movedPrNumbers: z.array(z.number()).min(1),
+	}),
 	z.object({ state: z.literal(PR_RESOLUTION.GENERATING), jobId: z.string() }),
 	z.object({ state: z.literal(PR_RESOLUTION.FAILED), jobId: z.string(), error: z.string() }),
 	z.object({ state: z.literal(PR_RESOLUTION.NEEDS_GENERATION) }),
