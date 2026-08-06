@@ -39,10 +39,10 @@ function jobQueryKey(jobId: string | null): readonly unknown[] {
  * Starts a headless generation job. Rejects with the server's own message so
  * "no local clone for this repo" (422) reaches the user verbatim.
  */
-async function startGeneration(prUrl: string): Promise<string> {
+async function startGeneration(prUrls: string[]): Promise<string> {
 	// Typed against the shared schema so a change to the request shape is a
 	// compile error here rather than a runtime 400 from an inline object.
-	const body: GenerateRequest = { prUrls: [prUrl] };
+	const body: GenerateRequest = { prUrls };
 	const res = await fetch("/api/generate", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
@@ -93,19 +93,50 @@ export interface PrResolutionMachine {
  * it and orphans the stale mutation callback.
  */
 export function usePrResolution(address: PrAddress): PrResolutionMachine {
-	const queryClient = useQueryClient();
 	const prUrl = `https://github.com/${address.owner}/${address.repo}/pull/${address.number}`;
-	const resolutionPath = `/api/pull-requests/${address.owner}/${address.repo}/${address.number}`;
+	return useResolution({
+		queryKey: prResolutionQueryKey(address),
+		path: `/api/pull-requests/${address.owner}/${address.repo}/${address.number}`,
+		prUrls: [prUrl],
+	});
+}
+
+/** What a resolution is for: where to read it, and what generating would cover. */
+export interface ResolutionTarget {
+	queryKey: readonly unknown[];
+	/** GET path returning a `PrResolution`. */
+	path: string;
+	/**
+	 * The PRs a generation request would chapter. Empty means generation is not
+	 * possible yet — a stack page has not loaded its chain — and auto-start waits.
+	 */
+	prUrls: string[];
+}
+
+/**
+ * The resolver machine itself, over any target. A single PR and a whole stack
+ * differ only in which endpoint reports the state and how many PRs a generate
+ * request names, so both share this.
+ */
+export function useResolution(target: ResolutionTarget): PrResolutionMachine {
+	const queryClient = useQueryClient();
+	const { queryKey, path } = target;
+
+	// Read through a ref so the auto-start effect does not depend on the identity
+	// of a freshly-built array every render.
+	const prUrlsRef = useRef(target.prUrls);
+	prUrlsRef.current = target.prUrls;
+	const canGenerate = target.prUrls.length > 0;
 
 	const resolutionQuery = useQuery<PrResolution>({
-		queryKey: prResolutionQueryKey(address),
-		queryFn: async () => PrResolutionSchema.parse(await jsonFetch<unknown>(resolutionPath)),
+		queryKey,
+		queryFn: async () => PrResolutionSchema.parse(await jsonFetch<unknown>(path)),
 	});
 	const resolution = resolutionQuery.data;
 
 	const [startedJobId, setStartedJobId] = useState<string | null>(null);
 	const { mutate, error: startError } = useMutation({
-		mutationFn: () => startGeneration(prUrl),
+		mutationFn: (prUrls: string[]) => startGeneration(prUrls),
 		onSuccess: setStartedJobId,
 	});
 
@@ -117,10 +148,10 @@ export function usePrResolution(address: PrAddress): PrResolutionMachine {
 	const needsGeneration =
 		resolution?.state === PR_RESOLUTION.NEEDS_GENERATION && resolutionQuery.isFetchedAfterMount;
 	useEffect(() => {
-		if (!needsGeneration || autoStarted.current) return;
+		if (!needsGeneration || !canGenerate || autoStarted.current) return;
 		autoStarted.current = true;
-		mutate();
-	}, [needsGeneration, mutate]);
+		mutate(prUrlsRef.current);
+	}, [needsGeneration, canGenerate, mutate]);
 
 	const jobId =
 		startedJobId ?? (resolution?.state === PR_RESOLUTION.GENERATING ? resolution.jobId : null);
@@ -150,8 +181,8 @@ export function usePrResolution(address: PrAddress): PrResolutionMachine {
 	const terminal = job !== undefined && isTerminalJobStatus(job.status);
 	useEffect(() => {
 		if (!terminal) return;
-		void queryClient.invalidateQueries({ queryKey: prResolutionQueryKey(address) });
-	}, [terminal, queryClient, address]);
+		void queryClient.invalidateQueries({ queryKey });
+	}, [terminal, queryClient, queryKey]);
 
 	const succeeded = job?.status === JOB_STATUS.SUCCEEDED;
 	useEffect(() => {
@@ -174,7 +205,7 @@ export function usePrResolution(address: PrAddress): PrResolutionMachine {
 			// the PR, so this Retry may well hand back the same jobId and land on the
 			// same key. Without the reset the button would look inert.
 			if (jobId !== null) void queryClient.resetQueries({ queryKey: jobQueryKey(jobId) });
-			mutate();
+			mutate(prUrlsRef.current);
 		},
 		pollError: pollError?.message ?? null,
 		generationError: startError?.message ?? job?.error ?? resolvedFailureError,
