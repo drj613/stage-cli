@@ -12,6 +12,25 @@
 > I work on it here, so `main` may sit ahead of — or diverge from — upstream, and nothing here is published to npm.
 > For the maintained release, see the upstream repo, the [`stagereview`](https://www.npmjs.com/package/stagereview) package, or [stagereview.app](https://stagereview.app).
 
+## What this fork adds
+
+This fork keeps Stage's chapter-based diff review and extends it into a local GitHub review
+workspace:
+
+- **Review on GitHub from Stage.** See existing GitHub review threads beside the diff, reply to
+  and resolve them, draft line comments, then submit an approval, comment, or change request.
+- **A persistent, multi-repo dashboard.** Browse pull requests in your local clones, see everything
+  waiting on your review, reopen recent runs, and generate chapters on demand with live phase and
+  activity progress. Small diffs open as a single chapter without spending an agent run.
+- **Stacked pull requests as one review.** Stage detects PR chains, links them from the dashboard,
+  accepts repeated `--pr` flags, and builds one run with a view for each member. Comment targets are
+  limited to members that changed the file, and reviews are submitted one PR at a time.
+- **Scriptable, repo-independent runs.** Runs share one database across repositories, while
+  `stagereview import` lets headless or custom workflows add a generated run without opening the UI.
+
+Everything still runs locally. GitHub-backed features use your authenticated `gh` CLI, and chapter
+generation runs through your local Claude CLI.
+
 ## Setup
 
 This fork isn't on npm, so run it straight from your clone. Two halves need wiring up: the `stagereview` binary and the `stage-chapters` skill.
@@ -76,7 +95,7 @@ This organizes your local changes into reviewable chapters and opens a browser U
 | `--base <ref>` | Base ref to diff against (default: auto-detect main/master) |
 | `--compare <ref>` | Compare ref to diff against `--base` |
 | `--ref <mode>` | Diff scope: `work` (staged + unstaged + untracked), `staged`, or `unstaged` (default: auto-detect) |
-| `--pr <number-or-url>` | Review a GitHub pull request by number or URL (requires `gh`) |
+| `--pr <number-or-url>` | Review a GitHub pull request by number or URL; repeat for each member of a stack (requires `gh`) |
 
 Examples:
 
@@ -95,6 +114,9 @@ Examples:
 # Review a teammate's PR by number or URL
 /stage-chapters --pr 123
 /stage-chapters --pr https://github.com/owner/repo/pull/123
+
+# Review a stacked chain as one run (order is inferred from git ancestry)
+/stage-chapters --pr 123 --pr 124 --pr 125
 ```
 
 ### The dashboard: `stagereview start`
@@ -107,8 +129,15 @@ stagereview start --model opus  # default model for one-click generation
 
 Starts a long-lived local server with a home dashboard showing:
 
-- **Waiting on your review** — open PRs across all orgs where your review is requested (via `gh search prs`; requires `gh auth login`). Each row links to an existing chapter run, or offers one-click **Generate chapters**, which runs a headless `claude -p` session (Sonnet by default) in a local clone stage already knows and imports the result. Generation runs sequentially and asks for confirmation first, since each run counts against your Claude usage limits.
+- **Waiting on your review** — open PRs across all orgs where your review is requested (via `gh search prs`; requires `gh auth login`). Each row links to an existing chapter run, or offers one-click **Generate chapters**, which runs a headless `claude -p` session (Sonnet by default) in a local clone Stage already knows and imports the result. Generation runs sequentially, asks for confirmation first, and reports its current phase and recent activity. Small diffs skip the agent and open immediately as one chapter.
 - **Recent runs** — every past chapter run, newest first, linking into the review UI.
+- **Repository browsing** — organizations, repositories, pull requests, and detected PR stacks from the clone roots Stage scans. You can add and remove roots from the dashboard's settings page or with the CLI:
+
+```bash
+stagereview config add-root ~/src
+stagereview config list-roots
+stagereview config remove-root ~/src
+```
 
 Runs live in one global database (`~/.stage/db.sqlite`), so the dashboard sees runs from every repo no matter where you start it.
 
