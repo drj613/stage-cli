@@ -14,8 +14,8 @@ export interface ShowOptions extends DiffScopeOptions {
 
 export async function show(jsonPath: string, options: ShowOptions): Promise<void> {
 	const db = getDb();
-	const { chaptersFile, prNumber } = await buildChaptersFile(jsonPath, options);
-	const { runId } = insertChaptersFile(db, chaptersFile, readRepoContext(options.cwd), prNumber);
+	const { chaptersFile, members } = await buildChaptersFile(jsonPath, options);
+	const { runId } = insertChaptersFile(db, chaptersFile, readRepoContext(options.cwd), members);
 
 	const handle = await startServer({
 		routes: coreRoutes(db, options.model),

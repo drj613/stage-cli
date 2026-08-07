@@ -20,13 +20,24 @@ import {
 export const MAX_RETAINED_PRS = 50;
 
 export interface JobRequest {
-	prUrl: string;
+	/** The PRs this job chapters, in stack order. One entry is a single-PR run. */
+	prUrls: string[];
 	repoRoot: string;
 	/** The model the caller asked for — may differ from what the agent actually runs. */
 	requestedModel: GenerationModel;
 }
 
 export interface Job extends JobRequest, GenerationJob {}
+
+/**
+ * Two jobs are the same job when they cover the same PRs in the same order. A
+ * tip URL alone is not an identity: a single-PR run for #14 and the chain
+ * [#13, #14] would collide, and clicking #14 would land in the chain.
+ */
+function sameMembers(a: readonly string[], b: readonly string[]): boolean {
+	if (a.length !== b.length) return false;
+	return a.every((url, i) => url.toLowerCase() === b[i]?.toLowerCase());
+}
 
 /** Returns the new runId on success. `onProgress` may be called any number of times before then. */
 export type JobRunner = (
@@ -88,15 +99,14 @@ export class JobManager {
 	}
 
 	/**
-	 * The queued or running job for this PR, if any. Two tabs (or a remounted
-	 * row) must not each spawn an agent for the same PR, so callers reuse this
-	 * job instead of enqueuing a second one. URLs are compared case-insensitively
-	 * — GitHub treats owner/repo as case-insensitive.
+	 * The queued or running job covering exactly these PRs, if any. Two tabs (or a
+	 * remounted row) must not each spawn an agent for the same work, so callers
+	 * reuse this job instead of enqueuing a second one. URLs are compared
+	 * case-insensitively — GitHub treats owner/repo as case-insensitive.
 	 */
-	activeJobFor(prUrl: string): Job | null {
-		const wanted = prUrl.toLowerCase();
+	activeJobFor(prUrls: readonly string[]): Job | null {
 		for (const job of this.jobs.values()) {
-			if (job.prUrl.toLowerCase() === wanted && !isTerminalJobStatus(job.status)) {
+			if (sameMembers(job.prUrls, prUrls) && !isTerminalJobStatus(job.status)) {
 				return this.snapshot(job);
 			}
 		}
@@ -123,11 +133,10 @@ export class JobManager {
 	 * pretending generation was never attempted. Map preserves insertion order,
 	 * so the last match is the newest.
 	 */
-	latestJobFor(prUrl: string): Job | null {
-		const wanted = prUrl.toLowerCase();
+	latestJobFor(prUrls: readonly string[]): Job | null {
 		let latest: Job | null = null;
 		for (const job of this.jobs.values()) {
-			if (job.prUrl.toLowerCase() === wanted) latest = job;
+			if (sameMembers(job.prUrls, prUrls)) latest = job;
 		}
 		return latest ? this.snapshot(latest) : null;
 	}
@@ -189,7 +198,7 @@ export class JobManager {
 				// The only signal a headless run failed: the dashboard may not be open,
 				// and nothing else writes this. The PR identifies the job; the clone
 				// path is deliberately left out.
-				console.error(`[stage:generate] ${current.prUrl} failed: ${current.error}`);
+				console.error(`[stage:generate] ${current.prUrls.join(", ")} failed: ${current.error}`);
 			}
 			this.recordEnd(current, this.now());
 			this.evictTerminal();
@@ -218,18 +227,23 @@ export class JobManager {
 	 * during Map iteration.
 	 */
 	private evictTerminal(): void {
-		const newestByPr = new Map<string, Job>();
+		// A list rather than a keyed map: identity is the whole member set, and
+		// concatenating URLs into a string key is exactly what this avoids. The
+		// retained set is capped at MAX_RETAINED_PRS, so the scan stays cheap.
+		const newest: Job[] = [];
 		for (const job of this.jobs.values()) {
 			if (!isTerminalJobStatus(job.status)) continue;
-			const key = job.prUrl.toLowerCase();
-			const superseded = newestByPr.get(key);
-			if (superseded !== undefined) this.jobs.delete(superseded.id);
-			// Re-inserting moves the PR to the end, so iteration order is oldest first.
-			newestByPr.delete(key);
-			newestByPr.set(key, job);
+			const at = newest.findIndex((other) => sameMembers(other.prUrls, job.prUrls));
+			if (at >= 0) {
+				const superseded = newest[at];
+				if (superseded) this.jobs.delete(superseded.id);
+				// Re-appending moves the entry to the end, so order stays oldest first.
+				newest.splice(at, 1);
+			}
+			newest.push(job);
 		}
-		let excess = newestByPr.size - MAX_RETAINED_PRS;
-		for (const job of newestByPr.values()) {
+		let excess = newest.length - MAX_RETAINED_PRS;
+		for (const job of newest) {
 			if (excess <= 0) return;
 			this.jobs.delete(job.id);
 			excess -= 1;

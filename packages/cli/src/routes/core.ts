@@ -14,6 +14,7 @@ import { pullRequestRoutes } from "./pull-request.js";
 import { pullRequestMutationRoutes } from "./pull-request-mutations.js";
 import { pullRequestListRoutes } from "./pull-requests.js";
 import { runRoutes } from "./runs.js";
+import { stackRoutes } from "./stacks.js";
 import { viewStateRoutes } from "./view-state.js";
 import { viewerRoutes } from "./viewer.js";
 
@@ -37,6 +38,7 @@ export function coreRoutes(db: StageDb, defaultModel: GenerationModel): Route[] 
 		...pullRequestMutationRoutes(db),
 		...gitHubThreadRoutes(db),
 		...pullRequestListRoutes(db, jobs, registry),
+		...stackRoutes(db, jobs, registry),
 		...browseRoutes(db, registry),
 		...cloneRootRoutes(db, registry),
 		...generateRoutes(jobs, registry, defaultModel),

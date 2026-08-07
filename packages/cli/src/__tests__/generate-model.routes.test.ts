@@ -8,7 +8,7 @@ describe("generate routes — default model", () => {
 	it("falls back to the server's default model when the body omits one", async () => {
 		await env.restartWithDefaultModel("opus");
 		const res = await requestJson(env.port(), "POST", "/api/generate", {
-			prUrl: "https://github.com/acme/widgets/pull/7",
+			prUrls: ["https://github.com/acme/widgets/pull/7"],
 		});
 		expect(res.status).toBe(202);
 		await env.jobs.settled();
@@ -18,7 +18,7 @@ describe("generate routes — default model", () => {
 	it("lets a request body override the server's default model", async () => {
 		await env.restartWithDefaultModel("opus");
 		const res = await requestJson(env.port(), "POST", "/api/generate", {
-			prUrl: "https://github.com/acme/widgets/pull/7",
+			prUrls: ["https://github.com/acme/widgets/pull/7"],
 			model: "haiku",
 		});
 		expect(res.status).toBe(202);

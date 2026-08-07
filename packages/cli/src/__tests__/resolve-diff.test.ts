@@ -34,7 +34,7 @@ describe("resolveFilteredDiff", () => {
 
 		expect(result.scope.headSha).toBe(repo.headSha);
 		expect(result.mergeBaseSha).toBe(repo.baseSha);
-		expect(result.prNumber).toBeNull();
+		expect(result.members).toEqual([]);
 	});
 
 	it("drops files matched by the resolved repo's .stageignore", async () => {

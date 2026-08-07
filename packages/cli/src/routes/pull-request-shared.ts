@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import type { StageDb } from "../db/client.js";
 import { chapterRun } from "../db/schema/index.js";
 import { type GitHubRepo, parseGitHubRepo } from "../github/index.js";
+import { listRunPrNumbers } from "../runs/run-members.js";
 import { deriveScopeKey } from "../runs/scope-key.js";
 import type { RouteHandler, RouteParams } from "../server.js";
 import { writeJson } from "./json.js";
@@ -11,10 +12,14 @@ type Res = Parameters<RouteHandler>[1];
 type Req = Parameters<RouteHandler>[0];
 
 export interface RunRepo {
+	runId: string;
 	repoRoot: string;
 	originUrl: string | null;
-	/** PR this run targets (`--pr`), or null to fall back to the checked-out branch's PR. */
-	prNumber: number | null;
+	/**
+	 * PRs this run reviews, bottom of the stack first. Empty means the run came
+	 * from local refs, so PR lookups fall back to the checked-out branch's PR.
+	 */
+	prNumbers: number[];
 	/** The commit this run was generated against — used to detect a moved PR head. */
 	headSha: string;
 	/** Deterministic diff-scope key (see `deriveScopeKey`) — comment threads are keyed on this. */
@@ -41,9 +46,10 @@ export function resolveRun(db: StageDb, params: RouteParams, res: Res): RunRepo 
 		return null;
 	}
 	return {
+		runId,
 		repoRoot,
 		originUrl: run.originUrl,
-		prNumber: run.prNumber,
+		prNumbers: listRunPrNumbers(db, runId),
 		headSha: run.headSha,
 		scopeKey: deriveScopeKey(run),
 	};

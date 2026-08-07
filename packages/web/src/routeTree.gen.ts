@@ -17,6 +17,7 @@ import { Route as RunsRunIdIndexRouteImport } from "./app/runs.$runId.index";
 import { Route as BrowseOwnerIndexRouteImport } from "./app/browse.$owner.index";
 import { Route as RunsRunIdFilesRouteImport } from "./app/runs.$runId.files";
 import { Route as BrowseOwnerRepoRouteImport } from "./app/browse.$owner.$repo";
+import { Route as StackOwnerRepoNumberRouteImport } from "./app/stack.$owner.$repo.$number";
 import { Route as RunsRunIdChaptersChapterNumberRouteImport } from "./app/runs.$runId.chapters.$chapterNumber";
 import { Route as PrOwnerRepoNumberRouteImport } from "./app/pr.$owner.$repo.$number";
 
@@ -60,6 +61,11 @@ const BrowseOwnerRepoRoute = BrowseOwnerRepoRouteImport.update({
   path: "/browse/$owner/$repo",
   getParentRoute: () => rootRouteImport,
 } as any);
+const StackOwnerRepoNumberRoute = StackOwnerRepoNumberRouteImport.update({
+  id: "/stack/$owner/$repo/$number",
+  path: "/stack/$owner/$repo/$number",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const RunsRunIdChaptersChapterNumberRoute =
   RunsRunIdChaptersChapterNumberRouteImport.update({
     id: "/chapters/$chapterNumber",
@@ -83,6 +89,7 @@ export interface FileRoutesByFullPath {
   "/runs/$runId/": typeof RunsRunIdIndexRoute;
   "/pr/$owner/$repo/$number": typeof PrOwnerRepoNumberRoute;
   "/runs/$runId/chapters/$chapterNumber": typeof RunsRunIdChaptersChapterNumberRoute;
+  "/stack/$owner/$repo/$number": typeof StackOwnerRepoNumberRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute;
@@ -94,6 +101,7 @@ export interface FileRoutesByTo {
   "/runs/$runId": typeof RunsRunIdIndexRoute;
   "/pr/$owner/$repo/$number": typeof PrOwnerRepoNumberRoute;
   "/runs/$runId/chapters/$chapterNumber": typeof RunsRunIdChaptersChapterNumberRoute;
+  "/stack/$owner/$repo/$number": typeof StackOwnerRepoNumberRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
@@ -107,6 +115,7 @@ export interface FileRoutesById {
   "/runs/$runId/": typeof RunsRunIdIndexRoute;
   "/pr/$owner/$repo/$number": typeof PrOwnerRepoNumberRoute;
   "/runs/$runId/chapters/$chapterNumber": typeof RunsRunIdChaptersChapterNumberRoute;
+  "/stack/$owner/$repo/$number": typeof StackOwnerRepoNumberRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
@@ -120,7 +129,8 @@ export interface FileRouteTypes {
     | "/browse/$owner/"
     | "/runs/$runId/"
     | "/pr/$owner/$repo/$number"
-    | "/runs/$runId/chapters/$chapterNumber";
+    | "/runs/$runId/chapters/$chapterNumber"
+    | "/stack/$owner/$repo/$number";
   fileRoutesByTo: FileRoutesByTo;
   to:
     | "/"
@@ -131,7 +141,8 @@ export interface FileRouteTypes {
     | "/browse/$owner"
     | "/runs/$runId"
     | "/pr/$owner/$repo/$number"
-    | "/runs/$runId/chapters/$chapterNumber";
+    | "/runs/$runId/chapters/$chapterNumber"
+    | "/stack/$owner/$repo/$number";
   id:
     | "__root__"
     | "/"
@@ -143,7 +154,8 @@ export interface FileRouteTypes {
     | "/browse/$owner/"
     | "/runs/$runId/"
     | "/pr/$owner/$repo/$number"
-    | "/runs/$runId/chapters/$chapterNumber";
+    | "/runs/$runId/chapters/$chapterNumber"
+    | "/stack/$owner/$repo/$number";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
@@ -154,6 +166,7 @@ export interface RootRouteChildren {
   BrowseOwnerRepoRoute: typeof BrowseOwnerRepoRoute;
   BrowseOwnerIndexRoute: typeof BrowseOwnerIndexRoute;
   PrOwnerRepoNumberRoute: typeof PrOwnerRepoNumberRoute;
+  StackOwnerRepoNumberRoute: typeof StackOwnerRepoNumberRoute;
 }
 
 declare module "@tanstack/react-router" {
@@ -214,6 +227,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof BrowseOwnerRepoRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/stack/$owner/$repo/$number": {
+      id: "/stack/$owner/$repo/$number";
+      path: "/stack/$owner/$repo/$number";
+      fullPath: "/stack/$owner/$repo/$number";
+      preLoaderRoute: typeof StackOwnerRepoNumberRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/runs/$runId/chapters/$chapterNumber": {
       id: "/runs/$runId/chapters/$chapterNumber";
       path: "/chapters/$chapterNumber";
@@ -255,6 +275,7 @@ const rootRouteChildren: RootRouteChildren = {
   BrowseOwnerRepoRoute: BrowseOwnerRepoRoute,
   BrowseOwnerIndexRoute: BrowseOwnerIndexRoute,
   PrOwnerRepoNumberRoute: PrOwnerRepoNumberRoute,
+  StackOwnerRepoNumberRoute: StackOwnerRepoNumberRoute,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -115,6 +115,22 @@ async function ghPrView(repoRoot: string, prNumber: number): Promise<z.infer<typ
 	return PrViewSchema.parse(JSON.parse(stdout));
 }
 
+/** Where one PR currently sits: its head commit and the branch it targets. */
+export interface PullRequestHead {
+	number: number;
+	headSha: string;
+	baseRefName: string;
+}
+
+/** Read a PR's head and base without fetching anything. */
+export async function readPullRequestHead(
+	repoRoot: string,
+	prNumber: number,
+): Promise<PullRequestHead> {
+	const pr = await ghPrView(repoRoot, prNumber);
+	return { number: pr.number, headSha: pr.headRefOid, baseRefName: pr.baseRefName };
+}
+
 /**
  * Make the PR's head and base commits available locally. GitHub exposes a PR's
  * head at `refs/pull/<number>/head`; fetching it alongside the base branch

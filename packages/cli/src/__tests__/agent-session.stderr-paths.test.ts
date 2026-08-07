@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { captureLog, flush, JOB, makeSession } from "./agent-session-fixture.js";
 import { FakeChild } from "./fake-child-process.js";
 
-const TAG = `[stage:generate] ${JOB.prUrl}`;
+const TAG = `[stage:generate] ${JOB.prUrls[0]}`;
 
 /**
  * The stderr a failed run surfaces goes two places, and only one of them may

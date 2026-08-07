@@ -50,6 +50,10 @@ export type Chapter = z.infer<typeof ChapterSchema>;
 export const ChapterRunSchema = z.object({
 	id: z.string(),
 	repoName: z.string(),
+	/** `owner/repo` when the run's origin is a GitHub remote, else null. */
+	nameWithOwner: z.string().nullable(),
+	/** PRs this run reviews, bottom of the stack first. Empty for a local run. */
+	pullRequests: z.array(z.object({ number: z.number(), headSha: z.string() })),
 });
 export type ChapterRun = z.infer<typeof ChapterRunSchema>;
 

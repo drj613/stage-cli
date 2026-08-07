@@ -27,7 +27,7 @@ async function runOnce(outcome: { fail?: string; reportProgress?: boolean; now?:
 		return "run-1";
 	}, outcome.now);
 	const id = manager.enqueue({
-		prUrl: "https://github.com/o/r/pull/1",
+		prUrls: ["https://github.com/o/r/pull/1"],
 		repoRoot: REPO_ROOT,
 		requestedModel: "sonnet",
 	});

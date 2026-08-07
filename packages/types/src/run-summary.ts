@@ -4,7 +4,8 @@ import { SCOPE_KIND } from "./scope.ts";
 export const RunSummarySchema = z.object({
 	id: z.string(),
 	repoName: z.string(),
-	prNumber: z.number().nullable(),
+	/** PR numbers this run reviews, bottom of the stack first. Empty for a local run. */
+	prNumbers: z.array(z.number()),
 	scopeKind: z.enum(SCOPE_KIND),
 	generatedAt: z.string(),
 	chapterCount: z.number(),

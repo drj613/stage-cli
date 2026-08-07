@@ -64,6 +64,13 @@
       "when": 1785877606671,
       "tag": "0008_ancient_northstar",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1786057236592,
+      "tag": "0009_friendly_calypso",
+      "breakpoints": true
     }
   ]
 }

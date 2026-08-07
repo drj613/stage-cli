@@ -64,7 +64,7 @@ Both `prep` and `show` accept these optional flags:
   - `staged` — only staged changes (index vs HEAD).
   - `unstaged` — only unstaged changes (working tree vs index).
   - Omitted — auto-detect (equivalent to `work` when uncommitted changes exist, committed branch diff otherwise).
-- **`--pr <number-or-url>`** — review a GitHub pull request instead of the local branch. The base/head come from the PR itself, and its commits are fetched locally. Cannot be combined with positional refs, `--base`, `--compare`, or `--ref`. Requires `gh` to be installed and authenticated, and a github.com `origin` remote. Useful for reviewing a teammate's PR you don't have checked out.
+- **`--pr <number-or-url>`** — review a GitHub pull request instead of the local branch. The base/head come from the PR itself, and its commits are fetched locally. Cannot be combined with positional refs, `--base`, `--compare`, or `--ref`. Requires `gh` to be installed and authenticated, and a github.com `origin` remote. Useful for reviewing a teammate's PR you don't have checked out. Repeat `--pr` to review a stack of dependent PRs as one diff: `--pr 12 --pr 13 --pr 14`. The order you pass them in does not matter — Stage orders them by ancestry, and refuses the stack if a lower PR's commits are missing from the one above it.
 
 When flags or positional refs are specified, pass the same scope to **both** `prep` and `show`:
 
@@ -348,6 +348,6 @@ When invoked headlessly for the Stage dashboard (the prompt will say so), do not
 stagereview import "$AGENT_OUTPUT" --pr <ref>
 ```
 
-Use the same scope flags you passed to `stagereview prep` (`--pr`, `--base`, `--compare`, refs). `stagereview import` performs the same validation and database insertion as `show`, but exits immediately without starting a server or opening a browser, and prints the new run's `runId` to stdout. Print that runId as the last line of your output — the dashboard uses it to link to the run. All other steps are unchanged.
+Use the same scope flags you passed to `stagereview prep` (`--pr`, `--base`, `--compare`, refs). That includes repeated `--pr` flags: if `prep` was given three, `import` needs the same three. `stagereview import` performs the same validation and database insertion as `show`, but exits immediately without starting a server or opening a browser, and prints the new run's `runId` to stdout. Print that runId as the last line of your output — the dashboard uses it to link to the run. All other steps are unchanged.
 
 **Run every `stagereview` command from the repository root.** The headless prompt names that root; prefix each command with `cd <repo-root> && `, including `prep` and `import`. The shell's working directory persists across Bash calls, so a `cd` from an earlier command may still be in effect — never assume you are already in the right place. `stagereview import` rejects a PR that doesn't belong to the current directory's repository, which is exactly what a stray `cd` causes.

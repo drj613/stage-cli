@@ -15,6 +15,7 @@ import {
 	comment,
 	commentThread,
 } from "../db/schema/index.js";
+import { listRunPrNumbers } from "../runs/run-members.js";
 import { deriveScopeKey } from "../runs/scope-key.js";
 import type { Route } from "../server.js";
 import { parseJsonBody, writeJson } from "./json.js";
@@ -49,12 +50,26 @@ export function commentRoutes(db: StageDb): Route[] {
 				const body = await parseJsonBody(req, res, CreateCommentThreadBodySchema);
 				if (!body) return;
 
+				// A stack has no default target: picking the bottom PR silently would
+				// file feedback against work the author is not looking at.
+				if (scope.prNumbers.length > 1 && body.prNumber === undefined) {
+					writeJson(res, 400, {
+						error: "This run reviews a stack — name the pull request this comment is for",
+					});
+					return;
+				}
+				const target = body.prNumber ?? scope.prNumbers[0] ?? null;
+				if (target !== null && !scope.prNumbers.includes(target)) {
+					writeJson(res, 400, { error: `Run does not review pull request #${target}` });
+					return;
+				}
+
 				const created = db.transaction((tx) => {
 					const [threadRow] = tx
 						.insert(commentThread)
 						.values({
 							scopeKey: scope.scopeKey,
-							prNumber: scope.prNumber,
+							prNumber: target,
 							filePath: body.filePath,
 							side: body.side,
 							startLine: body.startLine,
@@ -211,7 +226,8 @@ export function commentRoutes(db: StageDb): Route[] {
 
 export interface RunCommentScope {
 	scopeKey: string;
-	prNumber: number | null;
+	/** PRs the requesting run reviews, bottom first. Empty for a local run. */
+	prNumbers: number[];
 }
 
 // Threads are anchored to a diff scope, not a run, so pending review comments and
@@ -230,21 +246,20 @@ export function resolveRunCommentScope(
 			baseSha: chapterRun.baseSha,
 			headSha: chapterRun.headSha,
 			mergeBaseSha: chapterRun.mergeBaseSha,
-			prNumber: chapterRun.prNumber,
 		})
 		.from(chapterRun)
 		.where(eq(chapterRun.id, runId))
 		.limit(1)
 		.all();
 	if (!run) return null;
-	return { scopeKey: deriveScopeKey(run), prNumber: run.prNumber };
+	return { scopeKey: deriveScopeKey(run), prNumbers: listRunPrNumbers(db, runId) };
 }
 
 function listThreads(db: StageDb, scope: RunCommentScope): CommentThreadDto[] {
 	const visible =
-		scope.prNumber === null
+		scope.prNumbers.length === 0
 			? isNull(commentThread.prNumber)
-			: or(isNull(commentThread.prNumber), eq(commentThread.prNumber, scope.prNumber));
+			: or(isNull(commentThread.prNumber), inArray(commentThread.prNumber, scope.prNumbers));
 	const threads = db
 		.select()
 		.from(commentThread)
@@ -302,6 +317,7 @@ function toThreadDto(thread: CommentThreadRow, comments: CommentRow[]): CommentT
 		startLine: thread.startLine,
 		endLine: thread.endLine,
 		pending: thread.prNumber !== null,
+		prNumber: thread.prNumber,
 		resolvedAt: thread.resolvedAt?.toISOString() ?? null,
 		createdAt: thread.createdAt.toISOString(),
 		updatedAt: thread.updatedAt.toISOString(),

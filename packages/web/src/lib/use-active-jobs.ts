@@ -74,8 +74,16 @@ export function useActiveJobs(): readonly GenerationJob[] {
 	return isError || jobs === undefined ? [] : jobs;
 }
 
-/** The active job for a PR URL, matched case-insensitively as the server does. */
+/**
+ * The active job for a PR URL, matched case-insensitively as the server does.
+ * Only a job covering that PR *alone* counts — a stack job containing it is
+ * different work, and badging the row with it would misreport what is running.
+ */
 export function findJobForPr(jobs: readonly GenerationJob[], prUrl: string): GenerationJob | null {
 	const wanted = prUrl.toLowerCase();
-	return jobs.find((activeJob) => activeJob.prUrl.toLowerCase() === wanted) ?? null;
+	return (
+		jobs.find(
+			(activeJob) => activeJob.prUrls.length === 1 && activeJob.prUrls[0]?.toLowerCase() === wanted,
+		) ?? null
+	);
 }

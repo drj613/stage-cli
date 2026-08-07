@@ -22,8 +22,10 @@ export const CommentThreadSchema = z.object({
 	side: z.enum(DIFF_SIDE),
 	startLine: z.number().int().positive(),
 	endLine: z.number().int().positive(),
-	/** True when this thread is an unsubmitted review comment for the run's PR. */
+	/** True when this thread is an unsubmitted review comment for a pull request. */
 	pending: z.boolean(),
+	/** The pull request this thread targets, or null for a purely local note. */
+	prNumber: z.number().nullable(),
 	resolvedAt: z.string().nullable(),
 	createdAt: z.string(),
 	updatedAt: z.string(),
@@ -42,6 +44,12 @@ export const CreateCommentThreadBodySchema = z
 		startLine: z.number().int().positive(),
 		endLine: z.number().int().positive(),
 		body: z.string().min(1),
+		/**
+		 * Which pull request this comment is for. Required when the run reviews a
+		 * stack — there is no sensible default among several members, and guessing
+		 * would post feedback where nobody is looking.
+		 */
+		prNumber: z.number().int().positive().optional(),
 	})
 	.refine((v) => v.startLine <= v.endLine, {
 		message: "endLine must be greater than or equal to startLine",

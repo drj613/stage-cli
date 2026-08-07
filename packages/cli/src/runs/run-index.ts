@@ -1,6 +1,6 @@
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import type { StageDb } from "../db/client.js";
-import { chapterRun } from "../db/schema/index.js";
+import { chapterRun, chapterRunPullRequest } from "../db/schema/index.js";
 import { parseGitHubRepo, toNameWithOwner } from "../github/repo.js";
 
 export interface PrRun {
@@ -31,45 +31,61 @@ export class RunIndex {
 		const repoRoots = new Map<string, string>();
 		const runIds = new Map<string, Map<number, PrRun>>();
 
-		const runs = db
+		const rows = db
 			.select({
 				id: chapterRun.id,
 				repoRoot: chapterRun.repoRoot,
 				originUrl: chapterRun.originUrl,
-				prNumber: chapterRun.prNumber,
-				headSha: chapterRun.headSha,
+				prNumber: chapterRunPullRequest.prNumber,
+				headSha: chapterRunPullRequest.headSha,
 			})
 			.from(chapterRun)
+			.leftJoin(chapterRunPullRequest, eq(chapterRunPullRequest.runId, chapterRun.id))
 			.orderBy(desc(chapterRun.generatedAt))
 			.all();
 
-		for (const run of runs) {
-			const repo = parseGitHubRepo(run.originUrl);
+		// One row per member, so a stack run appears once per PR. Counting members
+		// per run is what lets the lookup skip stack runs: clicking a single PR must
+		// open that PR alone, never the chain it happens to sit in.
+		const memberCounts = new Map<string, number>();
+		for (const row of rows) {
+			if (row.prNumber === null) continue;
+			memberCounts.set(row.id, (memberCounts.get(row.id) ?? 0) + 1);
+		}
+
+		for (const row of rows) {
+			const repo = parseGitHubRepo(row.originUrl);
 			if (!repo) continue;
-			const nameWithOwner = toNameWithOwner(repo);
-			if (!repoRoots.has(nameWithOwner)) repoRoots.set(nameWithOwner, run.repoRoot);
-			if (run.prNumber === null) continue;
-			let byPrNumber = runIds.get(nameWithOwner);
+			// One normalized key for both maps, so a mixed-case remote still matches.
+			const key = toNameWithOwner(repo).toLowerCase();
+			if (!repoRoots.has(key)) repoRoots.set(key, row.repoRoot);
+			if (row.prNumber === null || row.headSha === null) continue;
+			if (memberCounts.get(row.id) !== 1) continue;
+			let byPrNumber = runIds.get(key);
 			if (!byPrNumber) {
 				byPrNumber = new Map();
-				runIds.set(nameWithOwner, byPrNumber);
+				runIds.set(key, byPrNumber);
 			}
-			if (!byPrNumber.has(run.prNumber)) {
-				byPrNumber.set(run.prNumber, { runId: run.id, headSha: run.headSha });
+			if (!byPrNumber.has(row.prNumber)) {
+				byPrNumber.set(row.prNumber, { runId: row.id, headSha: row.headSha });
 			}
 		}
 
 		return new RunIndex(repoRoots, runIds);
 	}
 
-	/** Newest run for a PR with the head it was generated at, or null. */
-	latestRunFor(nameWithOwner: string, prNumber: number): PrRun | null {
+	/**
+	 * Newest run that reviews this PR *and nothing else*, with the head it was
+	 * generated at. Stack runs are excluded on purpose: clicking one PR must open
+	 * that PR, not the chain around it.
+	 */
+	latestSinglePrRunFor(nameWithOwner: string, prNumber: number): PrRun | null {
 		return this.runIds.get(nameWithOwner.toLowerCase())?.get(prNumber) ?? null;
 	}
 
-	/** Newest run for a PR, or null if Stage has never generated chapters for it. */
-	runIdFor(nameWithOwner: string, prNumber: number): string | null {
-		return this.latestRunFor(nameWithOwner, prNumber)?.runId ?? null;
+	/** Newest single-PR run for a PR, or null if Stage has never generated one. */
+	singlePrRunIdFor(nameWithOwner: string, prNumber: number): string | null {
+		return this.latestSinglePrRunFor(nameWithOwner, prNumber)?.runId ?? null;
 	}
 
 	/** A local clone of the repo Stage has generated from before, or null. */

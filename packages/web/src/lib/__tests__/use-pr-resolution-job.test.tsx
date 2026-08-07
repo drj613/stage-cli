@@ -18,7 +18,7 @@ const JOB_ID = "job-1";
 function job(over: Partial<GenerationJob> = {}): GenerationJob {
 	return {
 		id: JOB_ID,
-		prUrl: "https://github.com/o/r/pull/1",
+		prUrls: ["https://github.com/o/r/pull/1"],
 		status: "running",
 		requestedModel: "sonnet",
 		runId: null,

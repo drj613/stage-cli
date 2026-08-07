@@ -66,7 +66,7 @@ describe("usePrResolution — auto-generation gating", () => {
 			poll: [
 				{
 					id: JOB_ID,
-					prUrl: PR_URL,
+					prUrls: [PR_URL],
 					status: "running",
 					requestedModel: "sonnet",
 					runId: null,
@@ -84,7 +84,7 @@ describe("usePrResolution — auto-generation gating", () => {
 		await waitFor(() => expect(postCalls).toHaveLength(1));
 		// Deliberately a literal, not PR_URL: this asserts the URL the hook builds
 		// from ADDRESS. Pointing it at the fixture's constant would make it a tautology.
-		expect(postCalls[0]).toEqual({ prUrl: "https://github.com/o/r/pull/1" });
+		expect(postCalls[0]).toEqual({ prUrls: ["https://github.com/o/r/pull/1"] });
 		await waitFor(() => expect(result.current.job?.status).toBeDefined());
 
 		// A second render tick must not fire a second POST.
@@ -110,7 +110,7 @@ describe("usePrResolution — auto-generation gating", () => {
 	it("does not auto-POST when the resolution is stale", async () => {
 		const postCalls: unknown[] = [];
 		installFetch({
-			resolutions: [{ state: "stale", runId: "run-1", headSha: "abc123" }],
+			resolutions: [{ state: "stale", runId: "run-1", movedPrNumbers: [7] }],
 			postCalls,
 		});
 		const { result } = renderHook(() => usePrResolution(ADDRESS), {

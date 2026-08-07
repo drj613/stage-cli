@@ -11,6 +11,7 @@
     "./clone-roots": "./src/clone-roots.ts",
     "./comments": "./src/comments.ts",
     "./diff": "./src/diff.ts",
+    "./generate": "./src/generate.ts",
     "./generation": "./src/generation.ts",
     "./github-threads": "./src/github-threads.ts",
     "./parsed-diff": "./src/parsed-diff.ts",
@@ -19,6 +20,7 @@
     "./pull-requests": "./src/pull-requests.ts",
     "./run-summary": "./src/run-summary.ts",
     "./scope": "./src/scope.ts",
+    "./stacks": "./src/stacks.ts",
     "./view-state": "./src/view-state.ts",
     "./viewer": "./src/viewer.ts"
   },

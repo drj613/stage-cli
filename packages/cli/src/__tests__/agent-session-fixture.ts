@@ -5,7 +5,7 @@ import type { JobRequest } from "../generation/job-manager.js";
 import type { FakeChild } from "./fake-child-process.js";
 
 export const JOB: JobRequest = {
-	prUrl: "https://github.com/acme/widgets/pull/42",
+	prUrls: ["https://github.com/acme/widgets/pull/42"],
 	repoRoot: "/repo",
 	requestedModel: GENERATION_MODEL.SONNET,
 };

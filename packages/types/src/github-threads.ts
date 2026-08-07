@@ -35,6 +35,8 @@ export type GitHubComment = z.infer<typeof GitHubCommentSchema>;
 export const GitHubThreadSchema = z.object({
 	/** GraphQL node id — what the resolve/unresolve mutations address. */
 	githubThreadId: z.string(),
+	/** The pull request this thread belongs to — a stack run fetches from several. */
+	prNumber: z.number(),
 	filePath: z.string(),
 	anchor: z
 		.object({
@@ -67,6 +69,12 @@ export type SubmitReviewBody = z.infer<typeof SubmitReviewBodySchema>;
 // Body for replying to an existing GitHub thread.
 export const GitHubReplyBodySchema = z.object({
 	body: z.string().min(1),
+	/**
+	 * The pull request the thread being replied to belongs to. Required when the
+	 * run reviews a stack — the reply has to reach the PR the thread lives on,
+	 * which for a lower member is not the run's tip.
+	 */
+	prNumber: z.number().int().positive().optional(),
 });
 export type GitHubReplyBody = z.infer<typeof GitHubReplyBodySchema>;
 

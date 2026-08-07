@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CloneRegistry } from "../clones/clone-registry.js";
 import { closeDb, getDb, type StageDb } from "../db/client.js";
-import { chapterRun } from "../db/schema/index.js";
+import { chapterRun, chapterRunPullRequest } from "../db/schema/index.js";
 import { JobManager } from "../generation/job-manager.js";
 import { pullRequestListRoutes } from "../routes/pull-requests.js";
 import { SCOPE_KIND } from "../schema.js";
@@ -42,11 +42,11 @@ describe("pull-requests routes", () => {
 	});
 
 	function seedRun(headSha: string, prNumber: number | null = PR_NUMBER): void {
-		db.insert(chapterRun)
+		const [row] = db
+			.insert(chapterRun)
 			.values({
 				repoRoot,
 				originUrl: ORIGIN_URL,
-				prNumber,
 				scopeKind: SCOPE_KIND.COMMITTED,
 				workingTreeRef: null,
 				baseSha: HEAD_SHA,
@@ -54,7 +54,14 @@ describe("pull-requests routes", () => {
 				mergeBaseSha: HEAD_SHA,
 				generatedAt: new Date(),
 			})
-			.run();
+			.returning({ id: chapterRun.id })
+			.all();
+		if (!row) throw new Error("seed: chapter_run insert returned no row");
+		if (prNumber !== null) {
+			db.insert(chapterRunPullRequest)
+				.values({ runId: row.id, prNumber, headSha, position: 0 })
+				.run();
+		}
 	}
 
 	/** Registers the repo as a known clone (via RunIndex) without generating a run for our PR. */
@@ -83,12 +90,12 @@ describe("pull-requests routes", () => {
 		expect(res.body).toMatchObject({ state: "ready" });
 	});
 
-	it("returns stale with runId and headSha when the head moved", async () => {
+	it("returns stale naming the moved PR when the head moved", async () => {
 		seedRun(HEAD_SHA);
 		const port = await start(async () => OTHER_SHA);
 		const res = await request(port, `/api/pull-requests/acme/widgets/${PR_NUMBER}`);
 		expect(res.status).toBe(200);
-		expect(res.body).toMatchObject({ state: "stale", headSha: HEAD_SHA });
+		expect(res.body).toMatchObject({ state: "stale", movedPrNumbers: [PR_NUMBER] });
 	});
 
 	it("returns ready when the live-head check fails (offline)", async () => {
@@ -109,7 +116,7 @@ describe("pull-requests routes", () => {
 					releaseRunner = () => resolve("run-abc");
 				}),
 		);
-		const jobId = jobs.enqueue({ prUrl: PR_URL, repoRoot, requestedModel: "sonnet" });
+		const jobId = jobs.enqueue({ prUrls: [PR_URL], repoRoot, requestedModel: "sonnet" });
 		const port = await start(neverCalled);
 		const res = await request(port, `/api/pull-requests/acme/widgets/${PR_NUMBER}`);
 		expect(res.status).toBe(200);
@@ -122,7 +129,7 @@ describe("pull-requests routes", () => {
 		jobs = new JobManager(async () => {
 			throw new Error("agent exploded");
 		});
-		jobs.enqueue({ prUrl: PR_URL, repoRoot, requestedModel: "sonnet" });
+		jobs.enqueue({ prUrls: [PR_URL], repoRoot, requestedModel: "sonnet" });
 		await jobs.settled();
 		const port = await start(neverCalled);
 		const res = await request(port, `/api/pull-requests/acme/widgets/${PR_NUMBER}`);

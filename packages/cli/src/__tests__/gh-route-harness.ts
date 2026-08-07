@@ -2,10 +2,8 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { eq } from "drizzle-orm";
 import { afterEach, beforeEach } from "vitest";
 import { closeDb, getDb } from "../db/client.js";
-import { chapterRun } from "../db/schema/index.js";
 import { insertChaptersFile } from "../runs/import-chapters.js";
 import { LOOPBACK_HOST, type Route, type ServerHandle, startServer } from "../server.js";
 import { makeFixture, makeRepoContext } from "./fixtures.js";
@@ -91,7 +89,7 @@ export interface GhRouteTestEnv {
 	startWithRoutes(routes: Route[]): Promise<number>;
 	/**
 	 * Seed a run against a GitHub remote (`GITHUB_ORIGIN`, the fixture's repoRoot),
-	 * optionally stamping `prNumber` afterward. `null` leaves the run without a PR.
+	 * optionally recording it as reviewing one PR. `null` leaves the run without a PR.
 	 */
 	seedRun(prNumber: number | null): string;
 }
@@ -149,14 +147,13 @@ export function setupGhRouteTest(tmpPrefix: string): GhRouteTestEnv {
 
 	function seedRun(prNumber: number | null): string {
 		const db = getDb({ dbPath });
+		const fixture = makeFixture();
 		const { runId } = insertChaptersFile(
 			db,
-			makeFixture(),
+			fixture,
 			makeRepoContext({ root: repoRoot, originUrl: GITHUB_ORIGIN }),
+			prNumber === null ? [] : [{ prNumber, headSha: fixture.scope.headSha }],
 		);
-		if (prNumber !== null) {
-			db.update(chapterRun).set({ prNumber }).where(eq(chapterRun.id, runId)).run();
-		}
 		return runId;
 	}
 

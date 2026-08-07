@@ -3,6 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 import { buildOtherChangesChapter } from "./build-other-changes.js";
 import { type ResolvedFilteredDiff, resolveFilteredDiff } from "./resolve-diff.js";
+import type { RunMember } from "./runs/run-members.js";
 import {
 	type AgentOutput,
 	AgentOutputSchema,
@@ -11,12 +12,12 @@ import {
 	ChaptersFileSchema,
 	DIFF_SIDE,
 } from "./schema.js";
-import { type DiffScopeOptions, pullRequestNumberFromRef } from "./scope.js";
+import { type DiffScopeOptions, membersFromRefs } from "./scope.js";
 
 export interface BuiltChaptersFile {
 	chaptersFile: ChaptersFile;
-	/** The reviewed PR's number when `--pr` was used, else null. */
-	prNumber: number | null;
+	/** The reviewed PRs in stack order, bottom first. Empty for a local-ref scope. */
+	members: RunMember[];
 }
 
 export async function buildChaptersFile(
@@ -28,20 +29,22 @@ export async function buildChaptersFile(
 	const parsed = JSON.parse(raw) as unknown;
 
 	// A fully-formed chapters file carries its own scope, so the diff isn't
-	// recomputed from the working tree or PR. `--pr` still records which PR the
-	// run targets (so the UI resolves the right one) — only the number is needed
-	// here, not a fetch, since the scope already comes from the file.
+	// recomputed from the working tree or PR. `--pr` still records which PRs the
+	// run targets (so the UI resolves the right one) — no diff is needed here,
+	// since the scope already comes from the file, but a stack's member order is
+	// still established by ancestry rather than trusted from the command line.
 	const fullResult = ChaptersFileSchema.safeParse(parsed);
 	if (fullResult.success) {
-		const prNumber =
-			options.pr === undefined ? null : pullRequestNumberFromRef(options.cwd, options.pr);
-		return { chaptersFile: fullResult.data, prNumber };
+		return {
+			chaptersFile: fullResult.data,
+			members: await membersFromRefs(options.cwd, options.prRefs ?? []),
+		};
 	}
 
 	const agentResult = AgentOutputSchema.safeParse(parsed);
 	if (agentResult.success) {
 		const diff = await resolveFilteredDiff(options);
-		return { chaptersFile: assembleChaptersFile(agentResult.data, diff), prNumber: diff.prNumber };
+		return { chaptersFile: assembleChaptersFile(agentResult.data, diff), members: diff.members };
 	}
 
 	// Only a full chapters file carries `scope`, so its presence tells us which

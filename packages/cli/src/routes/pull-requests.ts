@@ -53,7 +53,7 @@ export function pullRequestListRoutes(
 				writeJson(res, 200, {
 					available: true,
 					pullRequests: mapSearchResults(raw, {
-						runIdFor: (repo, prNumber) => index.runIdFor(repo, prNumber),
+						runIdFor: (repo, prNumber) => index.singlePrRunIdFor(repo, prNumber),
 						isCloned: (repo) => registry.isCloned(repo),
 					}),
 				} satisfies PullRequestListResponse);
@@ -73,7 +73,7 @@ export function pullRequestListRoutes(
 				const nameWithOwner = toNameWithOwner(location);
 				const prUrl = toPullRequestUrl(location);
 
-				const active = jobs.activeJobFor(prUrl);
+				const active = jobs.activeJobFor([prUrl]);
 				if (active) {
 					writeJson(res, 200, {
 						state: PR_RESOLUTION.GENERATING,
@@ -82,7 +82,7 @@ export function pullRequestListRoutes(
 					return;
 				}
 
-				const run = RunIndex.load(db).latestRunFor(nameWithOwner, number);
+				const run = RunIndex.load(db).latestSinglePrRunFor(nameWithOwner, number);
 				if (run) {
 					let liveHead: string | null = null;
 					try {
@@ -95,7 +95,7 @@ export function pullRequestListRoutes(
 						writeJson(res, 200, {
 							state: PR_RESOLUTION.STALE,
 							runId: run.runId,
-							headSha: run.headSha,
+							movedPrNumbers: [number],
 						} satisfies PrResolution);
 						return;
 					}
@@ -106,7 +106,7 @@ export function pullRequestListRoutes(
 					return;
 				}
 
-				const latest = jobs.latestJobFor(prUrl);
+				const latest = jobs.latestJobFor([prUrl]);
 				if (latest?.status === JOB_STATUS.FAILED) {
 					writeJson(res, 200, {
 						state: PR_RESOLUTION.FAILED,

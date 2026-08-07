@@ -1,6 +1,7 @@
 import { createContext, type ReactNode, useContext, useEffect, useMemo } from "react";
 import { toast } from "@/components/ui/sonner";
 import { type MergedThreads, mergeThreads } from "./merge-threads";
+import { useChapters } from "./use-chapters";
 import { type UseCommentThreadsResult, useCommentThreads } from "./use-comment-threads";
 import { type UseGitHubThreadsResult, useGitHubThreads } from "./use-github-threads";
 
@@ -9,9 +10,20 @@ export interface CommentThreadsContextValue extends UseCommentThreadsResult {
 	github: UseGitHubThreadsResult;
 	/** Local + GitHub threads combined into what the diff should render. */
 	merged: MergedThreads;
+	/**
+	 * The PRs this run reviews, bottom of the stack first. More than one means the
+	 * composer must ask which member a comment is for — the server rejects an
+	 * untargeted comment on a stack rather than guessing.
+	 */
+	pullRequests: readonly { number: number; headSha: string }[];
+	/** The run these threads belong to — consumers need it for run-scoped fetches. */
+	runId: string;
 }
 
 const CommentThreadsContext = createContext<CommentThreadsContextValue | null>(null);
+
+/** Stable identity so an absent run does not re-render every consumer. */
+const EMPTY_PULL_REQUESTS: readonly { number: number; headSha: string }[] = [];
 
 const LOAD_ERROR_TOAST_ID = "comment-threads-error";
 const GITHUB_LOAD_ERROR_TOAST_ID = "github-threads-error";
@@ -50,6 +62,9 @@ export function CommentThreadsProvider({
 }) {
 	const local = useCommentThreads(runId);
 	const github = useGitHubThreads(runId);
+	// Same query key as the chapter tree, so this shares its cache entry.
+	const { data: chaptersData } = useChapters(runId);
+	const pullRequests = chaptersData?.run.pullRequests ?? EMPTY_PULL_REQUESTS;
 	const { threads } = local;
 	// `available: false` means gh is missing or the run has no PR — its (empty)
 	// thread list is meaningless then, so don't merge it.
@@ -58,8 +73,8 @@ export function CommentThreadsProvider({
 		[threads, github.available, github.threads],
 	);
 	const value = useMemo<CommentThreadsContextValue>(
-		() => ({ ...local, github, merged }),
-		[local, github, merged],
+		() => ({ ...local, github, merged, pullRequests, runId }),
+		[local, github, merged, pullRequests, runId],
 	);
 
 	useLoadErrorToast(local.error, LOAD_ERROR_TOAST_ID, "Couldn't load comments");

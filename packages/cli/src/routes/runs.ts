@@ -1,9 +1,13 @@
 import type { Chapter, ChapterRun, KeyChange } from "@stagereview/types/chapters";
 import type { RunListResponse, RunSummary } from "@stagereview/types/run-summary";
+import type { MemberFilesResponse } from "@stagereview/types/stacks";
 import { asc, count, desc, eq, inArray } from "drizzle-orm";
 import type { StageDb } from "../db/client.js";
 import { chapter, chapterRun, keyChange } from "../db/schema/index.js";
 import { parseRepoName } from "../git.js";
+import { parseGitHubRepo, toNameWithOwner } from "../github/repo.js";
+import { filePullRequests } from "../runs/member-files.js";
+import { listRunMembers, listRunPrNumbers } from "../runs/run-members.js";
 import type { Route } from "../server.js";
 import { writeJson } from "./json.js";
 
@@ -38,8 +42,17 @@ function mapChapter(ch: ChapterRow, kcs: KeyChangeRow[]): Chapter {
 	};
 }
 
-function mapRun(run: ChapterRunRow): ChapterRun {
-	return { id: run.id, repoName: parseRepoName(run.originUrl, run.repoRoot) };
+function mapRun(db: StageDb, run: ChapterRunRow): ChapterRun {
+	const repo = parseGitHubRepo(run.originUrl);
+	return {
+		id: run.id,
+		repoName: parseRepoName(run.originUrl, run.repoRoot),
+		nameWithOwner: repo ? toNameWithOwner(repo) : null,
+		pullRequests: listRunMembers(db, run.id).map((m) => ({
+			number: m.prNumber,
+			headSha: m.headSha,
+		})),
+	};
 }
 
 export function runRoutes(db: StageDb): Route[] {
@@ -66,7 +79,7 @@ export function runRoutes(db: StageDb): Route[] {
 						(run): RunSummary => ({
 							id: run.id,
 							repoName: parseRepoName(run.originUrl, run.repoRoot),
-							prNumber: run.prNumber,
+							prNumbers: listRunPrNumbers(db, run.id),
 							scopeKind: run.scopeKind,
 							generatedAt: run.generatedAt.toISOString(),
 							chapterCount: countByRun.get(run.id) ?? 0,
@@ -74,6 +87,25 @@ export function runRoutes(db: StageDb): Route[] {
 					),
 				};
 				writeJson(res, 200, body);
+			},
+		},
+		{
+			method: "GET",
+			pattern: "/api/runs/:runId/member-files",
+			handler: (_req, res, params) => {
+				const runId = params.runId;
+				const [run] = runId
+					? db.select().from(chapterRun).where(eq(chapterRun.id, runId)).limit(1).all()
+					: [];
+				if (!run || !runId) {
+					writeJson(res, 404, { error: `Run ${params.runId} not found` });
+					return;
+				}
+				const members = listRunMembers(db, runId);
+				const byPath = filePullRequests(run.repoRoot, members, run.baseSha);
+				writeJson(res, 200, {
+					filePullRequests: Object.fromEntries(byPath),
+				} satisfies MemberFilesResponse);
 			},
 		},
 		{
@@ -113,7 +145,7 @@ export function runRoutes(db: StageDb): Route[] {
 				}
 
 				writeJson(res, 200, {
-					run: mapRun(run),
+					run: mapRun(db, run),
 					chapters: chapters.map((ch) => mapChapter(ch, byChapter.get(ch.id) ?? [])),
 					prologue: run.prologue ?? null,
 				});

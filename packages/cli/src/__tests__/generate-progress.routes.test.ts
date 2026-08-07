@@ -18,7 +18,7 @@ describe("GET /api/generate/:jobId progress", () => {
 	it("reports the requested model, prUrl, and live progress", async () => {
 		env.blockRunner();
 		const start = await requestJson(env.port(), "POST", "/api/generate", {
-			prUrl: PR_URL,
+			prUrls: [PR_URL],
 			model: GENERATION_MODEL.OPUS,
 		});
 		const jobId = expectJobId(start.body);
@@ -35,7 +35,7 @@ describe("GET /api/generate/:jobId progress", () => {
 		expect(res.status).toBe(200);
 		const job = GenerationJobSchema.parse(res.body);
 		expect(job).toMatchObject({
-			prUrl: PR_URL,
+			prUrls: [PR_URL],
 			requestedModel: GENERATION_MODEL.OPUS,
 			status: JOB_STATUS.RUNNING,
 			progress: {
@@ -52,7 +52,7 @@ describe("GET /api/generate/:jobId progress", () => {
 
 	it("keeps the snapshot after the job fails", async () => {
 		env.failRunner("boom");
-		const start = await requestJson(env.port(), "POST", "/api/generate", { prUrl: PR_URL });
+		const start = await requestJson(env.port(), "POST", "/api/generate", { prUrls: [PR_URL] });
 		const jobId = expectJobId(start.body);
 		await env.jobs.settled();
 
@@ -65,7 +65,7 @@ describe("GET /api/generate/:jobId progress", () => {
 
 	it("serves an end time once the job is over, so the SPA can stop its clock", async () => {
 		env.blockRunner();
-		const start = await requestJson(env.port(), "POST", "/api/generate", { prUrl: PR_URL });
+		const start = await requestJson(env.port(), "POST", "/api/generate", { prUrls: [PR_URL] });
 		const jobId = expectJobId(start.body);
 		env.pushProgress({
 			startedAt: 1,
@@ -97,7 +97,7 @@ describe("GET /api/generate", () => {
 
 	it("lists non-terminal jobs and drops them once they finish", async () => {
 		env.blockRunner();
-		const start = await requestJson(env.port(), "POST", "/api/generate", { prUrl: PR_URL });
+		const start = await requestJson(env.port(), "POST", "/api/generate", { prUrls: [PR_URL] });
 		const jobId = expectJobId(start.body);
 
 		const during = ActiveGenerationJobsSchema.parse(
@@ -122,7 +122,7 @@ describe("GET /api/generate", () => {
 
 	it("never ships the job's repoRoot", async () => {
 		env.blockRunner();
-		await requestJson(env.port(), "POST", "/api/generate", { prUrl: PR_URL });
+		await requestJson(env.port(), "POST", "/api/generate", { prUrls: [PR_URL] });
 		const res = await requestJson(env.port(), "GET", "/api/generate");
 		expect(JSON.stringify(res.body)).not.toContain(env.knownRepoRoot);
 

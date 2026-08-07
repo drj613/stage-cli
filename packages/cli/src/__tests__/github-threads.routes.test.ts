@@ -1,10 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { GitHubThreadsResponseSchema } from "@stagereview/types/github-threads";
-import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { getDb } from "../db/client.js";
-import { chapterRun } from "../db/schema/index.js";
 import { gitHubThreadRoutes } from "../routes/github-threads.js";
 import { insertChaptersFile } from "../runs/import-chapters.js";
 import { makeFixture, makeRepoContext } from "./fixtures.js";
@@ -69,17 +67,16 @@ async function ghWasInvoked(binDir: string): Promise<boolean> {
 		.catch(() => false);
 }
 
-/** Seed a run with `insertChaptersFile`, optionally stamping a `prNumber` afterward. */
+/** Seed a run, optionally recording it as reviewing one PR. */
 function seedRun(originUrl: string, prNumber: number | null): string {
 	const db = getDb({ dbPath: env.dbPath });
+	const fixture = makeFixture();
 	const { runId } = insertChaptersFile(
 		db,
-		makeFixture(),
+		fixture,
 		makeRepoContext({ root: env.repoRoot, originUrl }),
+		prNumber === null ? [] : [{ prNumber, headSha: fixture.scope.headSha }],
 	);
-	if (prNumber !== null) {
-		db.update(chapterRun).set({ prNumber }).where(eq(chapterRun.id, runId)).run();
-	}
 	return runId;
 }
 

@@ -39,7 +39,6 @@ describe("browse and clone-roots routes", () => {
 			.values({
 				repoRoot,
 				originUrl,
-				prNumber: null,
 				scopeKind: SCOPE_KIND.COMMITTED,
 				workingTreeRef: null,
 				baseSha: SHA,

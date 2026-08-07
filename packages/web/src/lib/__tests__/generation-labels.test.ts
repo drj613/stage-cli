@@ -11,7 +11,7 @@ import { formatJobBadge, formatModelLabel, formatQueueStatus } from "../generati
 function job(over: Partial<GenerationJob> = {}): GenerationJob {
 	return {
 		id: "job-1",
-		prUrl: "https://github.com/o/r/pull/1",
+		prUrls: ["https://github.com/o/r/pull/1"],
 		status: JOB_STATUS.RUNNING,
 		requestedModel: GENERATION_MODEL.SONNET,
 		runId: null,
